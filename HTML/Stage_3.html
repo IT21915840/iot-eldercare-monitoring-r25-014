@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Futuristic Patient Monitoring System</title>
+
+    <!-- Include Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Include Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Custom Tailwind Configuration for Dark/Neon Theme -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'background': '#0a1128',
+                        'card-bg': 'rgba(12, 18, 40, 0.7)',
+                        'accent-cyan': '#00e4ff',
+                        'critical-red': '#ff4d4d',
+                        'high-orange': '#ffaa00',
+                        'normal-green': '#00ff80',
+                    },
+                    keyframes: {
+                        pulseNeon: {
+                            '0%, 100%': { boxShadow: '0 0 5px #00e4ff, 0 0 0px #00e4ff' },
+                            '50%': { boxShadow: '0 0 10px #00e4ff, 0 0 20px #00e4ff' },
+                        },
+                        pulseCritical: {
+                            '0%, 100%': { boxShadow: '0 0 5px #ff4d4d, 0 0 0px #ff4d4d' },
+                            '50%': { boxShadow: '0 0 15px #ff4d4d, 0 0 25px #ff4d4d' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'neon-pulse': 'pulseNeon 3s ease-in-out infinite',
+                        'critical-pulse': 'pulseCritical 1s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #0a1128; /* Deep Blue Background */
+            color: #e0e7ff; /* Light, digital text color */
+        }
+
+        /* Glassmorphism Card Effect - FIX 1: Removed height: 100% and restricted transition */
+        .glass-card {
+            background-color: rgba(12, 18, 40, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+            /* FIX 1: Only transition transform and shadow to prevent animating height changes */
+            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+
+            /* FIX 1: Ensure predictable vertical layout */
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem; /* Small default gap for internal consistency */
+        }
+
+        /* Responsive Chart Container - FIX 2: Explicit height for Chart.js container */
+        .chart-container {
+            height: 200px; /* Fixed height for stability */
+            min-height: 150px;
+            width: 100%;
+        }
+
+        /* FIX 2: Force canvas to match container size precisely */
+        .chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        /* Radial Gauge Base Styling */
+        .gauge-base {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: conic-gradient(var(--gauge-color) calc(var(--gauge-value) * 1%), rgba(255, 255, 255, 0.1) 0%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .gauge-inner {
+            width: 85%;
+            height: 85%;
+            background-color: #0a1128;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        /* Custom Scrollbar for Alert Log */
+        #incidents-container::-webkit-scrollbar { width: 4px; }
+        #incidents-container::-webkit-scrollbar-thumb { background-color: #00e4ff; border-radius: 10px; }
+        #incidents-container::-webkit-scrollbar-track { background-color: transparent; }
+    </style>
+</head>
+
+<body class="bg-background font-sans p-4 min-h-screen">
+
+    <!-- NEW: Upper Utility Dashboard/Bar (Full Width) -->
+    <section class="glass-card mb-6 px-6 py-3 rounded-lg text-sm flex justify-between items-center">
+        <div class="flex items-center space-x-4">
+            <span class="text-white/70">SYSTEM STATUS:</span>
+            <span id="system-status" class="font-bold text-normal-green flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <circle cx="10" cy="10" r="5"/>
+                </svg>
+                ONLINE
+            </span>
+        </div>
+        <div class="text-white/70">
+            CURRENT TIME (UTC): <span id="utility-time" class="font-bold text-accent-cyan">--:--:--</span>
+        </div>
+        <div class="text-white/70">
+            <span class="text-critical-red">URGENT ALERTS: <span id="urgent-alert-count">0</span></span>
+        </div>
+    </section>
+
+    <!-- Header / Patient Info (Centered within its own padded container) -->
+    <header class="text-center mb-8 max-w-7xl mx-auto">
+        <h1 class="text-3xl font-thin tracking-widest text-white">PATIENT MONITORING SYSTEM</h1>
+        <div class="mt-4 text-xl font-medium">
+            <span id="patient-name" class="text-accent-cyan tracking-wider">Loading Patient Data...</span>
+            <span id="patient-id" class="text-gray-500 ml-4">ID: ---</span>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Grid (Apply items-stretch to force columns to match height) -->
+    <main class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch min-h-0">
+
+        <!-- Column 1: HEALTH OVERVIEW - FIX 3: Added min-h-0 -->
+        <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+            <h2 class="text-lg font-semibold border-b border-gray-700 pb-2 text-white/80">HEALTH OVERVIEW</h2>
+
+            <!-- 1. Vitals Gauges Container (HR, Temp, SpO2) -->
+            <div class="glass-card p-6 rounded-xl grid grid-cols-3 gap-4 text-center">
+                <!-- HR Gauge -->
+                <div class="flex flex-col items-center">
+                    <div id="hr-gauge-base" class="gauge-base mb-2" style="--gauge-color: var(--normal-green); --gauge-value: 70;">
+                        <div class="gauge-inner">
+                            <span id="hr-value" class="text-lg font-bold text-normal-green">--</span>
+                        </div>
+                    </div>
+                    <span class="text-sm text-white/70">HEART RATE</span>
+                </div>
+
+                <!-- Temp Gauge (Adapted from Blood Pressure) -->
+                <div class="flex flex-col items-center">
+                    <div id="temp-gauge-base" class="gauge-base mb-2" style="--gauge-color: #0080ff; --gauge-value: 50;">
+                        <div class="gauge-inner">
+                            <span id="temp-value" class="text-lg font-bold text-[#0080ff]">--</span>
+                        </div>
+                    </div>
+                    <span class="text-sm text-white/70">TEMP (°C)</span>
+                </div>
+
+                <!-- SpO2 Gauge (Oxygen Level) -->
+                <div class="flex flex-col items-center">
+                    <div id="spo2-gauge-base" class="gauge-base mb-2" style="--gauge-color: var(--accent-cyan); --gauge-value: 98;">
+                        <div class="gauge-inner">
+                            <span id="spo2-value" class="text-lg font-bold text-accent-cyan">--</span>
+                        </div>
+                    </div>
+                    <span class="text-sm text-white/70">OXYGEN (%)</span>
+                </div>
+            </div>
+
+            <!-- 2. AI Critical KPIs (Fall & Emotion) - New dedicated cards -->
+            <div class="glass-card p-6 rounded-xl grid grid-cols-2 gap-6">
+                <!-- Fall Detection KPI Card -->
+                <div id="fall-kpi-card" class="text-center p-3 rounded-lg border border-white/10 transition duration-300 transform hover:scale-[1.05]">
+                    <div id="fall-icon" class="text-3xl text-critical-red mb-1">
+                        <!-- Lucide Icon Placeholder (Replaced by JS) -->
+                        <i data-lucide="bell-ring" class="w-8 h-8 mx-auto"></i>
+                    </div>
+                    <span class="text-sm text-white/70 block">FALL STATUS</span>
+                    <div id="fall-value-kpi" class="text-xl font-bold mt-1 text-accent-cyan">--</div>
+                    <!-- Confidence removed as it's not in the current backend payload -->
+                </div>
+
+                <!-- Emotion KPI Card -->
+                <div id="emotion-kpi-card" class="text-center p-3 rounded-lg border border-white/10 transition duration-300 transform hover:scale-[1.05]">
+                    <div id="emotion-icon" class="text-3xl text-normal-green mb-1">
+                         <!-- Lucide Icon Placeholder (Replaced by JS) -->
+                        <i data-lucide="smile" class="w-8 h-8 mx-auto"></i>
+                    </div>
+                    <span class="text-sm text-white/70 block">EMOTION (AI)</span>
+                    <div id="emotion-value-kpi" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                    <!-- Confidence removed as it's not in the current backend payload -->
+                </div>
+            </div>
+
+            <!-- Vitals Trend Chart (Flex-grow applied) -->
+            <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                <h3 class="text-base font-semibold text-accent-cyan mb-3">VITAL TRENDS (HR & SpO2)</h3>
+                <div class="chart-container">
+                    <canvas id="vitalsTrendChart"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Column 2: SLEEP MONITORING (Adapted) - FIX 3: Added min-h-0 -->
+        <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+            <h2 class="text-lg font-semibold border-b border-gray-700 pb-2 text-white/80">SLEEP MONITORING</h2>
+
+            <!-- Sleep Status Card (Radial Gauge) -->
+            <div class="glass-card p-6 rounded-xl text-center">
+                <h3 class="text-base font-semibold text-accent-cyan mb-3">CURRENT SLEEP STAGE</h3>
+                <div id="stage-gauge-base" class="gauge-base mx-auto mb-4" style="--gauge-color: #6a0dad; --gauge-value: 80; width: 140px; height: 140px;">
+                    <div class="gauge-inner w-[85%] h-[85%]">
+                        <span id="stage-value" class="text-xl font-bold text-purple-400">--</span>
+                    </div>
+                </div>
+                <div class="flex justify-between text-sm text-white/70 pt-2 border-t border-gray-700">
+                    <span>Fall Asleep: --</span>
+                    <span>Wake Up: --</span>
+                </div>
+            </div>
+
+            <!-- Sleep Stage Wave Chart (Flex-grow applied) -->
+            <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                <h3 class="text-base font-semibold text-accent-cyan mb-3">HR VARIABILITY (WAVE)</h3>
+                <div class="chart-container">
+                    <canvas id="sleepWaveChart"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Column 3: ACCIDENT & FALL LOG (Flex-grow applied to Log Container) - FIX 3: Added min-h-0 -->
+        <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+            <h2 class="text-lg font-semibold border-b border-gray-700 pb-2 text-white/80">ACCIDENT & FALL LOG</h2>
+
+            <!-- Incident Log (Flex-grow applied to make it fill space) -->
+            <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                <h3 class="text-base font-semibold text-white/70 mb-3">RECENT INCIDENTS</h3>
+                <!-- FIX: Added h-96 class to set a fixed max height for the scrollable container -->
+                <div id="incidents-container" class="space-y-3 flex-grow overflow-y-auto min-h-0 h-96">
+                    <!-- Alerts will be prepended here by JS -->
+                    <p class="text-gray-500 text-sm">Waiting for real-time events...</p>
+                </div>
+            </div>
+
+            <!-- Emergency Alert Button -->
+            <div class="text-center flex-shrink-0">
+                <button id="emergency-alert-btn" class="px-6 py-4 rounded-xl font-bold text-lg bg-critical-red text-white w-full shadow-2xl shadow-red-900 transition duration-300 transform hover:scale-[1.03] focus:outline-none focus:ring-4 focus:ring-critical-red/50">
+                    EMERGENCY ALERT
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- Configuration and Constants ---
+        const MAX_DATA_POINTS = 50;
+        const HISTORY_DATA = { hr: [], spo2: [], time: [] };
+        let urgentAlerts = 0; // Counter for the utility bar
+
+        const COLOR_MAP = {
+            'CRITICAL': { main: '#ff4d4d', dark: 'rgba(255, 77, 77, 0.1)', neon: 'shadow-red-900', level: 100 },
+            'HIGH': { main: '#ffaa00', dark: 'rgba(255, 170, 0, 0.1)', neon: 'shadow-orange-900', level: 75 },
+            'MODERATE': { main: '#00e4ff', dark: 'rgba(0, 228, 255, 0.1)', neon: 'shadow-cyan-900', level: 50 },
+            'NORMAL': { main: '#00ff80', dark: 'rgba(0, 255, 128, 0.1)', neon: 'shadow-green-900', level: 25 },
+        };
+
+        const GAUGES = {
+            'hr': { max: 150, color: COLOR_MAP.NORMAL.main, base: 'hr-gauge-base', value: 'hr-value' },
+            'spo2': { max: 100, color: COLOR_MAP.MODERATE.main, base: 'spo2-gauge-base', value: 'spo2-value' },
+            'temp': { max: 40, color: '#0080ff', base: 'temp-gauge-base', value: 'temp-value' }
+        };
+
+        // Lucide icon mapping
+        const EMOTION_ICONS = {
+            'anger': 'frown', 'disgust': 'frown', 'fear': 'frown', 'sadness': 'frown',
+            'happiness': 'laugh', 'surprise': 'zap', 'neutral': 'smile', 'no person': 'user-x', 'error': 'alert-triangle'
+        };
+
+        // --- FIX 6: Chart Update Throttle setup ---
+        let lastChartUpdate = 0;
+        const CHART_THROTTLE_MS = 150;
+
+        // --- Chart.js Setups ---
+
+        // 1. Vitals Trend Chart (HR & SpO2)
+        const trendCtx = document.getElementById('vitalsTrendChart').getContext('2d');
+        const vitalsTrendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: [], datasets: [
+                    { label: 'HR (BPM)', data: [], borderColor: COLOR_MAP.NORMAL.main, backgroundColor: COLOR_MAP.NORMAL.dark, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 2, yAxisID: 'y' },
+                    { label: 'SpO2 (%)', data: [], borderColor: COLOR_MAP.MODERATE.main, backgroundColor: 'transparent', fill: false, tension: 0.4, borderWidth: 2, pointRadius: 2, yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+                plugins: { legend: { display: true, labels: { color: '#e0e7ff' } } },
+                scales: {
+                    x: {
+                        ticks: {
+                            color: '#777',
+                            maxRotation: 0,
+                            minRotation: 0,
+                            autoSkip: true,       // FIX 4: Enable skipping
+                            maxTicksLimit: 8      // FIX 4: Limit ticks
+                        },
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                    },
+                    y: { type: 'linear', position: 'left', suggestedMin: 50, suggestedMax: 100, ticks: { color: COLOR_MAP.NORMAL.main }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                    y1: { type: 'linear', position: 'right', suggestedMin: 85, suggestedMax: 100, ticks: { color: COLOR_MAP.MODERATE.main }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+
+        // 2. Sleep Wave Chart (HR Variability) - Single Waveform Line
+        const waveCtx = document.getElementById('sleepWaveChart').getContext('2d');
+        const sleepWaveChart = new Chart(waveCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{
+                label: 'HR Fluctuation', data: [], borderColor: '#6a0dad', backgroundColor: 'rgba(106, 13, 173, 0.1)', fill: true, tension: 0.6, borderWidth: 3, pointRadius: 0
+            }]},
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 100 },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { display: false }, grid: { color: 'rgba(255, 255, 255, 0.05)' } },
+                    y: { suggestedMin: 60, suggestedMax: 100, ticks: { color: '#e0e7ff' }, grid: { color: 'rgba(255, 255, 255, 0.05)' } }
+                }
+            }
+        });
+
+
+        // --- WebSocket Connection ---
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+        ws.onopen = () => {
+            addAlert("System Ready. Connected to Monitor Hub.", "NORMAL");
+            document.getElementById('emergency-alert-btn').classList.remove('animate-critical-pulse');
+            document.getElementById('system-status').classList.add('animate-pulse');
+            // Initial Lucide Icon Rendering
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        };
+
+        ws.onclose = () => {
+            addAlert("Connection Lost. Reconnecting...", "CRITICAL");
+            document.getElementById('emergency-alert-btn').classList.add('animate-critical-pulse');
+            document.getElementById('system-status').innerText = 'OFFLINE';
+            document.getElementById('system-status').classList.remove('animate-pulse', 'text-normal-green');
+            document.getElementById('system-status').classList.add('text-critical-red');
+        };
+
+        ws.onerror = () => {
+            addAlert("WebSocket Error.", "CRITICAL");
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            const level = data.level.toUpperCase();
+
+            // 1. Update Patient Info
+            document.getElementById('patient-name').innerText = data.patient_name;
+            document.getElementById('patient-id').innerText = `ID: ${data.patient_id}`;
+
+            // 2. Update KPI Gauges & Values
+            updateGauge('hr', data.hr, level);
+            updateGauge('spo2', data.spo2, level);
+            updateGauge('temp', data.temp.toFixed(1), level);
+
+            // 3. Update AI Status Panel (Now separate KPI cards)
+            updateAIStatus(data, level);
+
+            // 4. Update Critical Alert Banner
+            if (level === 'CRITICAL') {
+                 document.getElementById('emergency-alert-btn').classList.add('animate-critical-pulse');
+            } else {
+                 document.getElementById('emergency-alert-btn').classList.remove('animate-critical-pulse');
+            }
+
+            // 5. Add to Alerts Log & Update Utility Bar Counter
+            if (level !== "NORMAL" || data.fall_status.toLowerCase().includes('fall')) {
+                addAlert(data.alerts, level, data.fall_status);
+                if (level === 'CRITICAL' || level === 'HIGH') {
+                    urgentAlerts++;
+                    document.getElementById('urgent-alert-count').innerText = urgentAlerts;
+                }
+            }
+
+            // 6. Update Charts
+            updateCharts(data.timestamp, data.hr, data.spo2);
+        };
+
+        // --- Core Update Functions ---
+
+        function updateGauge(key, value, level) {
+            const config = GAUGES[key];
+            const gaugeEl = document.getElementById(config.base);
+            const valueEl = document.getElementById(config.value);
+
+            // Calculate percentage for radial fill
+            let percentage = (key === 'temp') ? ((value - 30) / (40 - 30)) * 100 : (value / config.max) * 100;
+            percentage = Math.max(0, Math.min(100, percentage)); // Clamp between 0 and 100
+
+            // Determine color based on level (HR/SpO2 use main level, Temp uses a fixed blue)
+            let color = config.color;
+            if (key === 'hr' || key === 'spo2') {
+                color = COLOR_MAP[level].main;
+            }
+
+            // Update CSS variable for radial fill
+            gaugeEl.style.setProperty('--gauge-color', color);
+            gaugeEl.style.setProperty('--gauge-value', percentage);
+
+            // Update value and color
+            valueEl.innerText = value + (key === 'spo2' ? '%' : '');
+            valueEl.style.color = color;
+        }
+
+        function updateAIStatus(data, overallLevel) {
+            // Sleep Stage (Original logic retained for the gauge section)
+            const stageEl = document.getElementById('stage-value');
+            stageEl.innerText = data.stage;
+
+            // --- Fall Status KPI Card ---
+            const fallValueEl = document.getElementById('fall-value-kpi');
+            const fallIconContainer = document.getElementById('fall-icon');
+            const fallStatus = data.fall_status.toUpperCase();
+
+            const isFalling = fallStatus.includes('FALL');
+            const fallColor = isFalling ? COLOR_MAP.CRITICAL.main : (fallStatus === 'NO PERSON' ? '#777' : COLOR_MAP.NORMAL.main);
+            const fallIcon = isFalling ? 'bell-ring' : (fallStatus === 'NO PERSON' ? 'user-x' : 'check-circle');
+
+            // Re-render icon with Lucide
+            // Note: Since we cannot dynamically update data-lucide attribute and call createIcons efficiently,
+            // we manually insert the SVG via innerHTML for real-time updates.
+            fallIconContainer.innerHTML = `<i data-lucide="${fallIcon}" class="w-8 h-8 mx-auto lucide lucide-${fallIcon}" style="color: ${fallColor};"></i>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons(); // Re-render the new icon
+
+            fallValueEl.innerText = isFalling ? 'FALL DETECTED' : fallStatus.replace('CONTINUOUS ', '');
+            fallValueEl.style.color = fallColor;
+
+            // --- Emotion Status KPI Card ---
+            const emotionValueEl = document.getElementById('emotion-value-kpi');
+            const emotionIconContainer = document.getElementById('emotion-icon');
+
+            const emotion = data.emotion.toUpperCase();
+
+            let emoIcon = 'smile';
+            let emoColor = COLOR_MAP.NORMAL.main;
+
+            if (['ANGER', 'FEAR', 'SADNESS'].includes(emotion)) {
+                emoIcon = 'frown';
+                emoColor = COLOR_MAP.HIGH.main;
+            } else if (emotion === 'HAPPINESS') {
+                emoIcon = 'laugh';
+                emoColor = COLOR_MAP.NORMAL.main;
+            } else if (emotion === 'SURPRISE') {
+                emoIcon = 'zap';
+                emoColor = COLOR_MAP.MODERATE.main;
+            }
+
+            // Re-render icon with Lucide
+            emotionIconContainer.innerHTML = `<i data-lucide="${emoIcon}" class="w-8 h-8 mx-auto lucide lucide-${emoIcon}" style="color: ${emoColor};"></i>`;
+            if (typeof lucide !== 'undefined') lucide.createIcons(); // Re-render the new icon
+
+            emotionValueEl.innerText = emotion;
+            emotionValueEl.style.color = emoColor;
+        }
+
+        function addAlert(message, level, fallStatus = 'None') {
+            const container = document.getElementById('incidents-container');
+            const alertDiv = document.createElement('div');
+            const colors = COLOR_MAP[level.toUpperCase()] || COLOR_MAP.MODERATE;
+
+            const isUrgent = (level === 'CRITICAL' || level === 'HIGH' || fallStatus.toLowerCase().includes('fall'));
+            const urgencyTag = `<span class="px-2 py-1 ml-2 rounded-full text-xs font-semibold ${isUrgent ? 'bg-critical-red/80 text-white animate-fade-in' : 'bg-accent-cyan/20 text-accent-cyan'}">${isUrgent ? 'URGENT' : 'MINOR'}</span>`;
+
+            // Use the full message for the status log for context
+            const status = isUrgent ? fallStatus.toUpperCase() : message.split(', ')[0];
+
+            alertDiv.className = `p-4 rounded-lg text-sm transition duration-500 bg-card-bg border border-white/10 hover:border-white/30 cursor-pointer ${isUrgent ? 'shadow-critical-pulse border-critical-red' : ''}`;
+
+            alertDiv.innerHTML = `
+                <div class="flex justify-between items-center text-white/90">
+                    <span class="font-bold">${status}</span>
+                    ${urgencyTag}
+                </div>
+                <p class="text-xs text-gray-400 mt-1">${new Date().toLocaleString()}</p>
+            `;
+
+            // Prepend for latest on top
+            container.prepend(alertDiv);
+
+            // Limit number of alerts shown
+            if (container.children.length > 15) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function updateCharts(timestamp, hr, spo2) {
+            // --- FIX 4: Convert timestamp to short, stable format ---
+            const t = (timestamp) ? new Date('2000/01/01 ' + timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : new Date().toLocaleTimeString();
+
+            // Update history data
+            HISTORY_DATA.time.push(t);
+            HISTORY_DATA.hr.push(hr);
+            HISTORY_DATA.spo2.push(spo2);
+
+            if (HISTORY_DATA.time.length > MAX_DATA_POINTS) {
+                for (const key in HISTORY_DATA) HISTORY_DATA[key].shift();
+            }
+
+            const now = Date.now();
+            if (now - lastChartUpdate > CHART_THROTTLE_MS) {
+                // 1. Vitals Trend Chart (HR & SpO2)
+                vitalsTrendChart.data.labels = HISTORY_DATA.time;
+                vitalsTrendChart.data.datasets[0].data = HISTORY_DATA.hr;
+                vitalsTrendChart.data.datasets[1].data = HISTORY_DATA.spo2;
+                vitalsTrendChart.update();
+
+                // 2. Sleep Wave Chart (HR Fluctuation)
+                sleepWaveChart.data.labels = HISTORY_DATA.time;
+
+                // Use HR fluctuations (simple differential) to mimic a wave pattern
+                const waveData = HISTORY_DATA.hr.map((h, i) => {
+                    const prev = HISTORY_DATA.hr[i-1] || h;
+                    return h + (Math.sin(i) * 2); // Simple sine wave variation for visualization effect
+                });
+                sleepWaveChart.data.datasets[0].data = waveData;
+                sleepWaveChart.update();
+
+                lastChartUpdate = now; // Update throttle timestamp
+            }
+        }
+
+        // --- Utility Bar Clock ---
+        function updateUtilityTime() {
+            const timeEl = document.getElementById('utility-time');
+            if (timeEl) {
+                const now = new Date();
+                // Format to HH:MM:SS UTC string
+                timeEl.innerText = now.toUTCString().split(' ')[4];
+            }
+        }
+
+        // --- Initialization ---
+        addAlert("System Initializing...", "MODERATE");
+        updateUtilityTime();
+        setInterval(updateUtilityTime, 1000); // Start clock
+
+    </script>
+</body>
+</html>

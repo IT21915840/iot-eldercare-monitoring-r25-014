@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Patient Monitoring</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            // ADDED: darkMode: 'class' to enable dark: variants
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        // MODIFIED: Changed colors to use CSS variables for toggling
+                        'background': 'var(--color-bg)',
+                        'card-bg': 'var(--color-card-bg)',
+                        'sidebar-bg': 'var(--color-sidebar-bg)',
+                        'text-primary': 'var(--color-text-primary)',
+                        'text-secondary': 'var(--color-text-secondary)',
+                        'border-primary': 'var(--color-border-primary)',
+
+                        // Status/accent colors remain the same
+                        'accent-cyan': '#00e4ff',
+                        'critical-red': '#ff4d4d',
+                        'high-orange': '#ffaa00',
+                        'normal-green': '#00ff80',
+                        'sleep-deep': '#6a0dad',
+                        'sleep-light': '#00e4ff',
+                        'sleep-rem': '#00ff80',
+                        'sleep-awake': '#ffaa00',
+                        'sleep-error': '#777777',
+                    },
+                    keyframes: {
+                        pulseNeon: {
+                            '0%, 100%': { boxShadow: '0 0 5px #00e4ff, 0 0 0px #00e4ff' },
+                            '50%': { boxShadow: '0 0 10px #00e4ff, 0 0 20px #00e4ff' },
+                        },
+                        pulseCritical: {
+                            '0%, 100%': { boxShadow: '0 0 5px #ff4d4d, 0 0 0px #ff4d4d' },
+                            '50%': { boxShadow: '0 0 15px #ff4d4d, 0 0 25px #ff4d4d' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'neon-pulse': 'pulseNeon 3s ease-in-out infinite',
+                        'critical-pulse': 'pulseCritical 1s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* ADDED: CSS Variables for Light/Dark Mode */
+        :root {
+            /* Light Mode Defaults */
+            --color-bg: #f1f5f9; /* slate-100 */
+            --color-card-bg: rgba(255, 255, 255, 0.7);
+            --color-sidebar-bg: #e2e8f0; /* slate-200 */
+            --color-text-primary: #0f172a; /* slate-900 */
+            --color-text-secondary: #475569; /* slate-600 */
+            --color-border-primary: rgba(0, 0, 0, 0.1);
+        }
+
+        html.dark {
+            /* Dark Mode Overrides */
+            --color-bg: #0a1128; /* Original 'background' */
+            --color-card-bg: rgba(12, 18, 40, 0.7); /* Original 'card-bg' */
+            --color-sidebar-bg: #070b1c; /* Original 'sidebar-bg' */
+            --color-text-primary: #e2e8f0; /* slate-200 */
+            --color-text-secondary: #94a3b8; /* slate-400 */
+            --color-border-primary: rgba(255, 255, 255, 0.1);
+        }
+        /* MODIFIED: body to use CSS variables */
+        body {
+          /* background: radial-gradient(circle at top left, #020617, #0f172a); */ /* Replaced with solid color for easy toggling */
+          background-color: var(--color-bg);
+          color: var(--color-text-primary);
+          font-family: 'Inter', sans-serif;
+          transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* MODIFIED: .glass-card to use CSS variables */
+        .glass-card {
+            background-color: var(--color-card-bg);
+            border: 1px solid var(--color-border-primary);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08); /* Softened shadow for light mode */
+            backdrop-filter: blur(5px);
+            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .glass-card:hover {
+            transform: scale(1.01);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.12), 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-container { height: 200px; min-height: 150px; width: 100%; }
+        .pie-chart-container { height: 220px; min-height: 200px; width: 100%; position: relative; }
+        .chart-container canvas, .pie-chart-container canvas { width: 100% !important; height: 100% !important; display: block; }
+
+        .gauge-base {
+            width: 80px; height: 80px; border-radius: 50%;
+            background: conic-gradient(var(--gauge-color) calc(var(--gauge-value) * 1%), rgba(128, 128, 128, 0.1) 0%); /* MODIFIED: lighter fallback */
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+
+        /* MODIFIED: .gauge-inner to use CSS variable */
+        .gauge-inner {
+            width: 85%; height: 85%;
+            background-color: var(--color-bg); /* Use theme background */
+            border-radius: 50%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; line-height: 1;
+        }
+
+        /* MODIFIED: scrollbar to be dark-mode specific */
+        html.dark #incidents-container::-webkit-scrollbar { width: 4px; }
+        html.dark #incidents-container::-webkit-scrollbar-thumb { background-color: #00e4ff; border-radius: 10px; }
+        html.dark #incidents-container::-webkit-scrollbar-track { background-color: transparent; }
+
+        .sidebar-link-active {
+            background-color: #00e4ff20 !important;
+            border-left: 4px solid #00e4ff;
+            color: #00e4ff !important;
+            font-weight: bold;
+        }
+
+        /* MODIFIED: .section-header to use CSS variable */
+        .section-header {
+            border-bottom: 1px solid var(--color-border-primary);
+            padding-bottom: 0.5rem;
+            color: var(--color-text-secondary);
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-left: 3px solid #00e4ff;
+            padding-left: 1rem;
+        }
+    </style>
+</head>
+
+<body class="bg-background font-sans min-h-screen">
+
+    <nav class="fixed top-0 left-0 h-screen w-64 bg-sidebar-bg text-text-primary flex flex-col shadow-2xl border-r border-border-primary z-10">
+        <div class="p-6 text-center border-b border-border-primary">
+            <h2 class="text-2xl font-thin tracking-widest text-text-primary">MONITOR</h2>
+            <span class="text-xs text-accent-cyan">Real-Time Health System</span>
+        </div>
+
+        <ul class="flex-grow p-4 space-y-2">
+            <li>
+                <a href="/" class="flex items-center space-x-3 p-3 rounded-r-lg sidebar-link-active font-thin tracking-wider">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+            <a href="/records" class="flex items-center space-x-3 p-3 rounded-r-lg text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 hover:text-text-primary transition-colors duration-200 font-thin tracking-wider">
+                <i data-lucide="database" class="w-5 h-5"></i>
+                <span>Records</span>
+            </a>
+        </ul>
+
+        <div class="p-4 border-t border-border-primary">
+             <form action="/logout" method="POST" class="mb-0">
+                <button
+                    type="submit"
+                    class="w-full flex items-center justify-center space-x-3 p-3 rounded-lg bg-critical-red/80 text-white font-semibold hover:bg-critical-red focus:outline-none focus:ring-2 focus:ring-critical-red/50 transition duration-200"
+                >
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    <span>LOGOUT</span>
+                </button>
+            </form>
+        </div>
+    </nav>
+
+    <div class="ml-64 p-4 lg:p-8">
+
+        <nav class="bg-card-bg mb-6 px-6 py-4 rounded-xl text-sm flex justify-between items-center border border-border-primary shadow-lg">
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2">
+                    <span class="text-text-secondary">STATUS:</span>
+                    <span id="system-status" class="font-bold text-normal-green flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="5"/>
+                        </svg>
+                        ONLINE
+                    </span>
+                </div>
+                <div class="text-text-secondary hidden md:block">
+                    |
+                </div>
+                <div class="text-text-secondary hidden md:block">
+                    <span class="text-critical-red">URGENT ALERTS: <span id="urgent-alert-count">0</span></span>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-6">
+                <div class="text-text-secondary hidden lg:block">
+                    CURRENT TIME (UTC): <span id="utility-time" class="font-bold text-accent-cyan">--:--:--</span>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="sun" class="w-5 h-5 text-text-secondary"></i>
+                    <label for="theme-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="theme-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-400 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent-cyan"></div>
+                    </label>
+                    <i data-lucide="moon" class="w-5 h-5 text-text-secondary"></i>
+                </div>
+                </div>
+        </nav>
+
+        <header class="text-center mb-8 max-w-7xl mx-auto">
+            <h1 class="text-3xl font-thin tracking-widest text-text-primary">PATIENT MONITORING SYSTEM</h1>
+            <div class="mt-4 text-xl font-medium">
+                <span id="patient-name" class="text-accent-cyan tracking-wider">Loading Patient Data...</span>
+                <span id="patient-id" class="text-text-secondary ml-4">ID: ---</span>
+            </div>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch min-h-0">
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+                <h2 class="section-header">HEALTH OVERVIEW</h2>
+
+                <div class="glass-card p-6 rounded-xl grid grid-cols-3 gap-4 text-center">
+                    <div class="flex flex-col items-center">
+                        <div id="hr-gauge-base" class="gauge-base mb-2" style="--gauge-color: var(--normal-green); --gauge-value: 70;">
+                            <div class="gauge-inner">
+                                <span id="hr-value" class="text-lg font-bold text-normal-green">--</span>
+                            </div>
+                        </div>
+                        <span class="text-sm text-text-secondary">HEART RATE</span>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div id="temp-gauge-base" class="gauge-base mb-2" style="--gauge-color: #0080ff; --gauge-value: 50;">
+                            <div class="gauge-inner">
+                                <span id="temp-value" class="text-lg font-bold text-[#0080ff]">--</span>
+                            </div>
+                        </div>
+                        <span class="text-sm text-text-secondary">TEMP (°C)</span>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div id="spo2-gauge-base" class="gauge-base mb-2" style="--gauge-color: var(--accent-cyan); --gauge-value: 98;">
+                            <div class="gauge-inner">
+                                <span id="spo2-value" class="text-lg font-bold text-accent-cyan">--</span>
+                            </div>
+                        </div>
+                        <span class="text-sm text-text-secondary">OXYGEN (%)</span>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl grid grid-cols-2 gap-6">
+                    <div id="fall-kpi-card" class="text-center p-3 rounded-lg border border-border-primary transition duration-300 transform hover:scale-[1.05]">
+                        <div id="fall-icon" class="text-3xl text-critical-red mb-1">
+                            <i data-lucide="bell-ring" class="w-8 h-8 mx-auto"></i>
+                        </div>
+                        <span class="text-sm text-text-secondary block">FALL STATUS</span>
+                        <div id="fall-value-kpi" class="text-xl font-bold mt-1 text-accent-cyan">--</div>
+                    </div>
+                    <div id="emotion-kpi-card" class="text-center p-3 rounded-lg border border-border-primary transition duration-300 transform hover:scale-[1.05]">
+                        <div id="emotion-icon" class="text-3xl text-normal-green mb-1">
+                            <i data-lucide="smile" class="w-8 h-8 mx-auto"></i>
+                        </div>
+                        <span class="text-sm text-text-secondary block">EMOTION (AI)</span>
+                        <div id="emotion-value-kpi" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-4">NETWORK HEALTH</h3>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="text-center p-3 rounded-lg border border-border-primary">
+                            <div id="pi-link-icon" class="text-3xl text-normal-green mb-1">
+                                <i data-lucide="server" class="w-8 h-8 mx-auto"></i>
+                            </div>
+                            <span class="text-sm text-text-secondary block">PI GATEWAY</span>
+                            <div id="pi-last-seen-s" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                        </div>
+                        <div class="text-center p-3 rounded-lg border border-border-primary">
+                            <div id="mongo-link-icon" class="text-3xl text-normal-green mb-1">
+                                <i data-lucide="database" class="w-8 h-8 mx-auto"></i>
+                            </div>
+                            <span class="text-sm text-text-secondary block">DATABASE PING</span>
+                            <div id="mongo-ping-ms" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">VITAL TRENDS (HR & SpO2)</h3>
+                    <div class="chart-container">
+                        <canvas id="vitalsTrendChart"></canvas>
+                    </div>
+                </div>
+
+            </section>
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+                <h2 class="section-header">SLEEP MONITORING</h2>
+
+                <div class="glass-card p-6 rounded-xl text-center">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">CURRENT SLEEP STAGE</h3>
+                    <div id="stage-gauge-base" class="gauge-base mx-auto mb-4" style="--gauge-color: #6a0dad; --gauge-value: 80; width: 140px; height: 140px;">
+                        <div class="gauge-inner w-[85%] h-[85%]">
+                            <span id="stage-value" class="text-xl font-bold text-purple-400">--</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between text-sm text-text-secondary pt-2 border-t border-border-primary">
+                        <span>Fall Asleep: --</span>
+                        <span>Wake Up: --</span>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">SLEEP STAGE ANALYSIS</h3>
+                    <div class="pie-chart-container">
+                        <canvas id="sleepAnalysisChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">HR VARIABILITY (WAVE)</h3>
+                    <div class="chart-container">
+                        <canvas id="sleepWaveChart"></canvas>
+                    </div>
+                </div>
+
+            </section>
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+                <h2 class="section-header">LIVE WATCH (AI)</h2>
+                
+                <div class="glass-card p-2 rounded-xl overflow-hidden aspect-video relative bg-black">
+                    <img id="camera-feed" src="/api/video" alt="Live Camera Feed" class="w-full h-full object-cover">
+                    <div class="absolute top-2 left-2 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded font-bold animate-pulse">LIVE</div>
+                    <div id="no-camera-msg" class="absolute inset-0 flex items-center justify-center text-text-secondary text-sm hidden">
+                        <div class="text-center">
+                            <i data-lucide="camera-off" class="w-12 h-12 mx-auto mb-2 opacity-20"></i>
+                            <p>Camera feed unavailable</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-header">ACCIDENT & FALL LOG</h2>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-text-secondary mb-3">RECENT INCIDENTS</h3>
+                    <div id="incidents-container" class="space-y-3 flex-grow overflow-y-auto min-h-0 h-96">
+                        <p class="text-text-secondary text-sm">Waiting for real-time events...</p>
+                    </div>
+                </div>
+
+                <div class="text-center flex-shrink-0">
+                    <button id="emergency-alert-btn" class="px-6 py-4 rounded-xl font-bold text-lg bg-critical-red text-white w-full shadow-2xl shadow-red-900 transition duration-300 transform hover:scale-[1.03] focus:outline-none focus:ring-4 focus:ring-critical-red/50">
+                        EMERGENCY ALERT
+                    </button>
+                </div>
+            </section>
+
+        </main>
+
+    </div>
+
+    <script>
+        const MAX_DATA_POINTS = 50;
+        const HISTORY_DATA = { hr: [], spo2: [], time: [] };
+        let urgentAlerts = 0;
+
+        // MODIFIED: Moved chart variables to global scope
+        let vitalsTrendChart, sleepWaveChart, sleepAnalysisChart;
+
+        const SLEEP_ANALYSIS_DATA = {
+            'Awake': 0, 'Light': 0, 'Deep': 0, 'REM': 0, 'Error': 0
+        };
+        const SLEEP_CHART_COLORS = [
+            tailwind.config.theme.extend.colors['sleep-awake'],
+            tailwind.config.theme.extend.colors['sleep-light'],
+            tailwind.config.theme.extend.colors['sleep-deep'],
+            tailwind.config.theme.extend.colors['sleep-rem'],
+            tailwind.config.theme.extend.colors['sleep-awake']
+        ];
+
+        const COLOR_MAP = {
+            'CRITICAL': { main: '#ff4d4d', dark: 'rgba(255, 77, 77, 0.1)', neon: 'shadow-red-900', level: 100 },
+            'HIGH': { main: '#ffaa00', dark: 'rgba(255, 170, 0, 0.1)', neon: 'shadow-orange-900', level: 75 },
+            'MODERATE': { main: '#00e4ff', dark: 'rgba(0, 228, 255, 0.1)', neon: 'shadow-cyan-900', level: 50 },
+            'NORMAL': { main: '#00ff80', dark: 'rgba(0, 255, 128, 0.1)', neon: 'shadow-green-900', level: 25 },
+        };
+        const GAUGES = {
+            'hr': { max: 150, color: COLOR_MAP.NORMAL.main, base: 'hr-gauge-base', value: 'hr-value' },
+            'spo2': { max: 100, color: COLOR_MAP.MODERATE.main, base: 'spo2-gauge-base', value: 'spo2-value' },
+            'temp': { max: 40, color: '#0080ff', base: 'temp-gauge-base', value: 'temp-value' }
+        };
+        const EMOTION_ICONS = {
+            'anger': 'frown', 'disgust': 'frown', 'fear': 'frown', 'sadness': 'frown',
+            'happiness': 'laugh', 'surprise': 'zap', 'neutral': 'smile', 'no person': 'user-x', 'error': 'alert-triangle'
+        };
+
+        let lastChartUpdate = 0;
+        const CHART_THROTTLE_MS = 150;
+
+        /* ADDED: Helper function to get CSS variable values */
+        function getCssVar(varName) {
+            return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        }
+
+        /* ADDED: Function to update chart colors on theme change */
+        function updateChartTheme() {
+            if (!vitalsTrendChart || !sleepWaveChart || !sleepAnalysisChart) return;
+
+            const textPrimary = getCssVar('--color-text-primary');
+            const textSecondary = getCssVar('--color-text-secondary');
+            const borderPrimary = getCssVar('--color-border-primary');
+            const colorBg = getCssVar('--color-bg');
+
+            // Update Vitals Trend Chart
+            vitalsTrendChart.options.plugins.legend.labels.color = textPrimary;
+            vitalsTrendChart.options.scales.x.ticks.color = textSecondary;
+            vitalsTrendChart.options.scales.x.grid.color = borderPrimary;
+            vitalsTrendChart.options.scales.y.grid.color = borderPrimary;
+
+            // Update Sleep Wave Chart
+            sleepWaveChart.options.scales.x.grid.color = borderPrimary;
+            sleepWaveChart.options.scales.y.ticks.color = textPrimary;
+            sleepWaveChart.options.scales.y.grid.color = borderPrimary;
+
+            // Update Sleep Analysis Chart
+            sleepAnalysisChart.options.plugins.legend.labels.color = textPrimary;
+            sleepAnalysisChart.data.datasets[0].borderColor = colorBg;
+
+            // Redraw all charts
+            vitalsTrendChart.update('none');
+            sleepWaveChart.update('none');
+            sleepAnalysisChart.update('none');
+        }
+
+        /* MODIFIED: Chart initializations to use theme variables */
+        const trendCtx = document.getElementById('vitalsTrendChart').getContext('2d');
+        vitalsTrendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: [], datasets: [
+                    { label: 'HR (BPM)', data: [], borderColor: COLOR_MAP.NORMAL.main, backgroundColor: COLOR_MAP.NORMAL.dark, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 2, yAxisID: 'y' },
+                    { label: 'SpO2 (%)', data: [], borderColor: COLOR_MAP.MODERATE.main, backgroundColor: 'transparent', fill: false, tension: 0.4, borderWidth: 2, pointRadius: 2, yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+                plugins: { legend: { display: true, labels: { color: getCssVar('--color-text-primary') } } },
+                scales: {
+                    x: {
+                        ticks: { color: getCssVar('--color-text-secondary'), maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                        grid: { color: getCssVar('--color-border-primary') }
+                    },
+                    y: { type: 'linear', position: 'left', suggestedMin: 50, suggestedMax: 100, ticks: { color: COLOR_MAP.NORMAL.main }, grid: { color: getCssVar('--color-border-primary') } },
+                    y1: { type: 'linear', position: 'right', suggestedMin: 85, suggestedMax: 100, ticks: { color: COLOR_MAP.MODERATE.main }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+
+        const waveCtx = document.getElementById('sleepWaveChart').getContext('2d');
+        sleepWaveChart = new Chart(waveCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{
+                label: 'HR Fluctuation', data: [], borderColor: '#6a0dad', backgroundColor: 'rgba(106, 13, 173, 0.1)', fill: true, tension: 0.6, borderWidth: 3, pointRadius: 0
+            }]},
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 100 },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { display: false }, grid: { color: getCssVar('--color-border-primary') } },
+                    y: { suggestedMin: 60, suggestedMax: 100, ticks: { color: getCssVar('--color-text-primary') }, grid: { color: getCssVar('--color-border-primary') } }
+                }
+            }
+        });
+
+        const analysisCtx = document.getElementById('sleepAnalysisChart').getContext('2d');
+        sleepAnalysisChart = new Chart(analysisCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(SLEEP_ANALYSIS_DATA),
+                datasets: [{
+                    label: 'Sleep Stages',
+                    data: Object.values(SLEEP_ANALYSIS_DATA),
+                    backgroundColor: SLEEP_CHART_COLORS,
+                    borderColor: getCssVar('--color-bg'), // MODIFIED
+                    borderWidth: 2,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 500 },
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: getCssVar('--color-text-primary'), // MODIFIED
+                            boxWidth: 20
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (label) {
+                                    label += ': ';
+                                }
+                                let value = context.raw || 0;
+                                const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${label} ${percentage}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${proto}//${host}/ws`;
+        let ws;
+
+        function connect() {
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                addAlert("System Ready. Connected to Monitor Hub.", "NORMAL");
+                document.getElementById('emergency-alert-btn').classList.remove('animate-critical-pulse');
+                document.getElementById('system-status').classList.add('animate-pulse');
+                document.getElementById('system-status').innerText = 'ONLINE';
+                document.getElementById('system-status').classList.add('text-normal-green');
+                document.getElementById('system-status').classList.remove('text-critical-red');
+
+                // This will now render all icons, including the new theme toggle icons
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+
+                // ADDED: Update chart themes on connect
+                updateChartTheme();
+            };
+
+            ws.onclose = (event) => {
+                addAlert("Connection Lost. Reconnecting...", "CRITICAL");
+                document.getElementById('emergency-alert-btn').classList.add('animate-critical-pulse');
+                document.getElementById('system-status').innerText = 'OFFLINE';
+                document.getElementById('system-status').classList.remove('animate-pulse', 'text-normal-green');
+                document.getElementById('system-status').classList.add('text-critical-red');
+
+                if (event.code === 1008) {
+                    addAlert("Authentication failed. Redirecting to login.", "CRITICAL");
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 3000);
+                } else {
+                    setTimeout(connect, 3000);
+                }
+            };
+
+            ws.onerror = () => {
+                addAlert("WebSocket Error.", "CRITICAL");
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'system_health') {
+                    updateNetworkHealth(data);
+                } else {
+                    handlePatientData(data);
+                }
+            };
+        }
+
+        function handlePatientData(data) {
+            const level = data.level.toUpperCase();
+
+            document.getElementById('patient-name').innerText = data.patient_name;
+            document.getElementById('patient-id').innerText = `ID: ${data.patient_id}`;
+
+            updateGauge('hr', data.hr, level);
+            updateGauge('spo2', data.spo2, level);
+            updateGauge('temp', data.temp.toFixed(1), level);
+
+            updateAIStatus(data, level);
+
+            if (level === 'CRITICAL') {
+                 document.getElementById('emergency-alert-btn').classList.add('animate-critical-pulse');
+            } else {
+                 document.getElementById('emergency-alert-btn').classList.remove('animate-critical-pulse');
+            }
+
+            if (level !== "NORMAL" || data.fall_status.toLowerCase().includes('fall')) {
+                addAlert(data.alerts, level, data.fall_status);
+                if (level === 'CRITICAL' || level === 'HIGH') {
+                    urgentAlerts++;
+                    document.getElementById('urgent-alert-count').innerText = urgentAlerts;
+                }
+            }
+
+            updateCharts(data.timestamp, data.hr, data.spo2);
+
+            // Hide/Show camera status
+            const camImg = document.getElementById('camera-feed');
+            const noCamMsg = document.getElementById('no-camera-msg');
+            if (data.emotion === "No person" && data.fall_status === "No person") {
+                // We keep the stream visible but can show a hint if needed
+            }
+        }
+
+        function updateNetworkHealth(data) {
+            const piValEl = document.getElementById('pi-last-seen-s');
+            const piIconEl = document.getElementById('pi-link-icon');
+            const mongoValEl = document.getElementById('mongo-ping-ms');
+            const mongoIconEl = document.getElementById('mongo-link-icon');
+
+            let piVal = data.pi_last_seen_s;
+            let piColor = COLOR_MAP.NORMAL.main;
+            let piIcon = 'server';
+            if (piVal === 'N/A' || piVal === null) {
+                piValEl.innerText = '---';
+                piColor = COLOR_MAP.CRITICAL.main;
+                piIcon = 'server-off';
+            } else {
+                piVal = parseFloat(piVal);
+                piValEl.innerText = piVal.toFixed(1) + 's';
+                if (piVal > 10) {
+                    piColor = COLOR_MAP.HIGH.main;
+                    piIcon = 'server-off';
+                }
+                if (piVal > 30) {
+                    piColor = COLOR_MAP.CRITICAL.main;
+                }
+            }
+            piValEl.style.color = piColor;
+            piIconEl.innerHTML = `<i data-lucide="${piIcon}" class="w-8 h-8 mx-auto" style="color: ${piColor};"></i>`;
+
+            let mongoVal = data.mongo_ping_ms;
+            let mongoColor = COLOR_MAP.NORMAL.main;
+            let mongoIcon = 'database';
+            if (mongoVal === 'N/A' || mongoVal === 'FAIL' || mongoVal === null) {
+                mongoValEl.innerText = mongoVal === 'FAIL' ? 'FAIL' : '---';
+                mongoColor = COLOR_MAP.CRITICAL.main;
+                mongoIcon = 'database-zap';
+            } else {
+                mongoVal = parseFloat(mongoVal);
+                mongoValEl.innerText = mongoVal.toFixed(0) + 'ms';
+                if (mongoVal > 500) {
+                    mongoColor = COLOR_MAP.HIGH.main;
+                }
+                if (mongoVal > 2000) {
+                    mongoColor = COLOR_MAP.CRITICAL.main;
+                }
+            }
+            mongoValEl.style.color = mongoColor;
+            mongoIconEl.innerHTML = `<i data-lucide="${mongoIcon}" class="w-8 h-8 mx-auto" style="color: ${mongoColor};"></i>`;
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function updateGauge(key, value, level) {
+            const config = GAUGES[key];
+            const gaugeEl = document.getElementById(config.base);
+            const valueEl = document.getElementById(config.value);
+
+            let percentage = (key === 'temp') ? ((value - 30) / (40 - 30)) * 100 : (value / config.max) * 100;
+            percentage = Math.max(0, Math.min(100, percentage));
+
+            let color = config.color;
+            if (key === 'hr' || key === 'spo2') {
+                color = COLOR_MAP[level].main;
+            }
+
+            gaugeEl.style.setProperty('--gauge-color', color);
+            gaugeEl.style.setProperty('--gauge-value', percentage);
+
+            valueEl.innerText = value + (key === 'spo2' ? '%' : '');
+            valueEl.style.color = color;
+        }
+
+        function updateAIStatus(data, overallLevel) {
+            const stageEl = document.getElementById('stage-value');
+            const stage = data.stage;
+            stageEl.innerText = stage;
+
+            if (stage && stage in SLEEP_ANALYSIS_DATA) {
+                SLEEP_ANALYSIS_DATA[stage]++;
+                sleepAnalysisChart.data.datasets[0].data = Object.values(SLEEP_ANALYSIS_DATA);
+                sleepAnalysisChart.update('none');
+            }
+
+            const fallValueEl = document.getElementById('fall-value-kpi');
+            const fallIconContainer = document.getElementById('fall-icon');
+            const fallStatus = data.fall_status.toUpperCase();
+            const isFalling = fallStatus.includes('FALL');
+            const fallColor = isFalling ? COLOR_MAP.CRITICAL.main : (fallStatus === 'NO PERSON' ? '#777' : COLOR_MAP.NORMAL.main);
+            const fallIcon = isFalling ? 'bell-ring' : (fallStatus === 'NO PERSON' ? 'user-x' : 'check-circle');
+
+            fallIconContainer.innerHTML = `<i data-lucide="${fallIcon}" class="w-8 h-8 mx-auto" style="color: ${fallColor};"></i>`;
+            fallValueEl.innerText = isFalling ? 'FALL DETECTED' : fallStatus.replace('CONTINUOUS ', '');
+            fallValueEl.style.color = fallColor;
+
+            const emotionValueEl = document.getElementById('emotion-value-kpi');
+            const emotionIconContainer = document.getElementById('emotion-icon');
+            const emotion = data.emotion.toUpperCase();
+            let emoIcon = 'smile';
+            let emoColor = COLOR_MAP.NORMAL.main;
+
+            if (['ANGER', 'FEAR', 'SADNESS'].includes(emotion)) {
+                emoIcon = 'frown';
+                emoColor = COLOR_MAP.HIGH.main;
+            } else if (emotion === 'HAPPINESS') {
+                emoIcon = 'laugh';
+                emoColor = COLOR_MAP.NORMAL.main;
+            } else if (emotion === 'SURPRISE') {
+                emoIcon = 'zap';
+                emoColor = COLOR_MAP.MODERATE.main;
+            }
+
+            emotionIconContainer.innerHTML = `<i data-lucide="${emoIcon}" class="w-8 h-8 mx-auto" style="color: ${emoColor};"></i>`;
+            emotionValueEl.innerText = emotion;
+            emotionValueEl.style.color = emoColor;
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        /* MODIFIED: addAlert to use theme classes */
+        function addAlert(message, level, fallStatus = 'None') {
+            const container = document.getElementById('incidents-container');
+            const alertDiv = document.createElement('div');
+            const colors = COLOR_MAP[level.toUpperCase()] || COLOR_MAP.MODERATE;
+            const isUrgent = (level === 'CRITICAL' || level === 'HIGH' || fallStatus.toLowerCase().includes('fall'));
+            const urgencyTag = `<span class="px-2 py-1 ml-2 rounded-full text-xs font-semibold ${isUrgent ? 'bg-critical-red/80 text-white animate-fade-in' : 'bg-accent-cyan/20 text-accent-cyan'}">${isUrgent ? 'URGENT' : 'MINOR'}</span>`;
+            const status = isUrgent ? (fallStatus.toUpperCase().includes('FALL') ? fallStatus.toUpperCase() : message.split(', ')[0]) : message.split(', ')[0];
+
+            alertDiv.className = `p-4 rounded-lg text-sm transition duration-500 bg-card-bg border border-border-primary hover:border-accent-cyan/50 cursor-pointer ${isUrgent ? 'shadow-critical-pulse border-critical-red' : ''}`;
+            alertDiv.innerHTML = `
+                <div class="flex justify-between items-center text-text-primary">
+                    <span class="font-bold">${status}</span>
+                    ${urgencyTag}
+                </div>
+                <p class="text-xs text-text-secondary mt-1">${new Date().toLocaleString()}</p>
+            `;
+
+            container.prepend(alertDiv);
+            const placeholder = container.querySelector('p.text-text-secondary'); // MODIFIED selector
+            if (placeholder) placeholder.remove();
+            if (container.children.length > 15) container.removeChild(container.lastChild);
+        }
+
+        function updateCharts(timestamp, hr, spo2) {
+            const t = (timestamp) ? new Date('2000/01/01 ' + timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : new Date().toLocaleTimeString();
+            HISTORY_DATA.time.push(t);
+            HISTORY_DATA.hr.push(hr);
+            HISTORY_DATA.spo2.push(spo2);
+
+            if (HISTORY_DATA.time.length > MAX_DATA_POINTS) {
+                for (const key in HISTORY_DATA) HISTORY_DATA[key].shift();
+            }
+
+            const now = Date.now();
+            if (now - lastChartUpdate > CHART_THROTTLE_MS) {
+                vitalsTrendChart.data.labels = HISTORY_DATA.time;
+                vitalsTrendChart.data.datasets[0].data = HISTORY_DATA.hr;
+                vitalsTrendChart.data.datasets[1].data = HISTORY_DATA.spo2;
+                vitalsTrendChart.update();
+
+                const waveData = HISTORY_DATA.hr.map((h, i) => h + (Math.sin(i) * 2));
+                sleepWaveChart.data.labels = HISTORY_DATA.time;
+                sleepWaveChart.data.datasets[0].data = waveData;
+                sleepWaveChart.data.datasets[0].label = 'HR Fluctuation'; // Ensure label is set
+                sleepWaveChart.update();
+                lastChartUpdate = now;
+            }
+        }
+
+        function updateUtilityTime() {
+            const timeEl = document.getElementById('utility-time');
+            if (timeEl) {
+                const now = new Date();
+                timeEl.innerText = now.toUTCString().split(' ')[4];
+            }
+        }
+
+        /* --- ADDED: Theme Toggle Logic --- */
+        const themeToggle = document.getElementById('theme-toggle');
+        const htmlEl = document.documentElement;
+
+        // On page load, set the theme
+        function applyTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            if (storedTheme === 'dark' || (!storedTheme && systemPrefersDark)) {
+                htmlEl.classList.add('dark');
+                themeToggle.checked = true;
+            } else {
+                htmlEl.classList.remove('dark');
+                themeToggle.checked = false;
+            }
+            // Ensure charts are updated after theme is applied
+            updateChartTheme();
+        }
+
+        // Listen for toggle changes
+        themeToggle.addEventListener('change', () => {
+            if (themeToggle.checked) {
+                htmlEl.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                htmlEl.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            }
+            // Re-render charts for new theme colors
+            updateChartTheme();
+        });
+
+        // Listen for system preference changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            if (!localStorage.getItem('theme')) { // Only if user has no override
+                applyTheme();
+            }
+        });
+        /* --- End Theme Toggle Logic --- */
+
+
+        addAlert("System Initializing...", "MODERATE");
+        updateUtilityTime();
+        setInterval(updateUtilityTime, 1000);
+
+        // ADDED: Call applyTheme on initial load *before* connecting
+        applyTheme();
+        connect();
+
+    </script>
+</body>
+</html>

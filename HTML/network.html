@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard | Patient Monitoring</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            // ADDED: darkMode: 'class' to enable dark: variants
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        // MODIFIED: Changed colors to use CSS variables for toggling
+                        'background': 'var(--color-bg)',
+                        'card-bg': 'var(--color-card-bg)',
+                        'sidebar-bg': 'var(--color-sidebar-bg)',
+                        'text-primary': 'var(--color-text-primary)',
+                        'text-secondary': 'var(--color-text-secondary)',
+                        'border-primary': 'var(--color-border-primary)',
+
+                        // Status/accent colors remain the same
+                        'accent-cyan': '#00e4ff',
+                        'critical-red': '#ff4d4d',
+                        'high-orange': '#ffaa00',
+                        'normal-green': '#00ff80',
+                        'sleep-deep': '#6a0dad',
+                        'sleep-light': '#00e4ff',
+                        'sleep-rem': '#00ff80',
+                        'sleep-awake': '#ffaa00',
+                        'sleep-error': '#777777',
+                    },
+                    keyframes: {
+                        pulseNeon: {
+                            '0%, 100%': { boxShadow: '0 0 5px #00e4ff, 0 0 0px #00e4ff' },
+                            '50%': { boxShadow: '0 0 10px #00e4ff, 0 0 20px #00e4ff' },
+                        },
+                        pulseCritical: {
+                            '0%, 100%': { boxShadow: '0 0 5px #ff4d4d, 0 0 0px #ff4d4d' },
+                            '50%': { boxShadow: '0 0 15px #ff4d4d, 0 0 25px #ff4d4d' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'neon-pulse': 'pulseNeon 3s ease-in-out infinite',
+                        'critical-pulse': 'pulseCritical 1s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* ADDED: CSS Variables for Light/Dark Mode */
+        :root {
+            /* Light Mode Defaults */
+            --color-bg: #f1f5f9;
+            /* slate-100 */
+            --color-card-bg: rgba(255, 255, 255, 0.7);
+            --color-sidebar-bg: #e2e8f0;
+            /* slate-200 */
+            --color-text-primary: #0f172a;
+            /* slate-900 */
+            --color-text-secondary: #475569;
+            /* slate-600 */
+            --color-border-primary: rgba(0, 0, 0, 0.1);
+        }
+
+        html.dark {
+            /* Dark Mode Overrides */
+            --color-bg: #0a1128;
+            /* Original 'background' */
+            --color-card-bg: rgba(12, 18, 40, 0.7);
+            /* Original 'card-bg' */
+            --color-sidebar-bg: #070b1c;
+            /* Original 'sidebar-bg' */
+            --color-text-primary: #e2e8f0;
+            /* slate-200 */
+            --color-text-secondary: #94a3b8;
+            /* slate-400 */
+            --color-border-primary: rgba(255, 255, 255, 0.1);
+        }
+
+        /* MODIFIED: body to use CSS variables */
+        body {
+            /* background: radial-gradient(circle at top left, #020617, #0f172a); */
+            /* Replaced with solid color for easy toggling */
+            background-color: var(--color-bg);
+            color: var(--color-text-primary);
+            font-family: 'Inter', sans-serif;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* MODIFIED: .glass-card to use CSS variables */
+        .glass-card {
+            background-color: var(--color-card-bg);
+            border: 1px solid var(--color-border-primary);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+            /* Softened shadow for light mode */
+            backdrop-filter: blur(5px);
+            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .glass-card:hover {
+            transform: scale(1.01);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.12), 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-container {
+            height: 200px;
+            min-height: 150px;
+            width: 100%;
+        }
+
+        .pie-chart-container {
+            height: 220px;
+            min-height: 200px;
+            width: 100%;
+            position: relative;
+        }
+
+        .chart-container canvas,
+        .pie-chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        .gauge-base {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: conic-gradient(var(--gauge-color) calc(var(--gauge-value) * 1%), rgba(128, 128, 128, 0.1) 0%);
+            /* MODIFIED: lighter fallback */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* MODIFIED: .gauge-inner to use CSS variable */
+        .gauge-inner {
+            width: 85%;
+            height: 85%;
+            background-color: var(--color-bg);
+            /* Use theme background */
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        /* MODIFIED: scrollbar to be dark-mode specific */
+        html.dark #incidents-container::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        html.dark #incidents-container::-webkit-scrollbar-thumb {
+            background-color: #00e4ff;
+            border-radius: 10px;
+        }
+
+        html.dark #incidents-container::-webkit-scrollbar-track {
+            background-color: transparent;
+        }
+
+        .sidebar-link-active {
+            background-color: #00e4ff20 !important;
+            border-left: 4px solid #00e4ff;
+            color: #00e4ff !important;
+            font-weight: bold;
+        }
+
+        /* MODIFIED: .section-header to use CSS variable */
+        .section-header {
+            border-bottom: 1px solid var(--color-border-primary);
+            padding-bottom: 0.5rem;
+            color: var(--color-text-secondary);
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-left: 3px solid #00e4ff;
+            padding-left: 1rem;
+        }
+    </style>
+</head>
+
+<body class="bg-background font-sans min-h-screen">
+
+    <nav id="sidebar"
+        class="fixed top-0 left-0 h-screen w-64 bg-sidebar-bg text-text-primary flex flex-col shadow-2xl border-r border-border-primary z-20 transition-all duration-300 transform translate-x-0">
+        <div class="p-6 flex items-center justify-between border-b border-border-primary">
+            <div class="text-left">
+                <h2 class="text-2xl font-thin tracking-widest text-text-primary">MONITOR</h2>
+                <span class="text-xs text-accent-cyan tracking-wider block">Real-Time Health System</span>
+            </div>
+            <button id="sidebar-toggle-close"
+                class="text-text-secondary hover:text-accent-cyan transition-colors focus:outline-none ml-2">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
+        </div>
+
+        <ul class="flex-grow p-4 space-y-2">
+            <li>
+                <a href="/"
+                    class="flex items-center space-x-3 p-3 rounded-r-lg text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 hover:text-text-primary transition-colors duration-200 font-thin tracking-wider">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+                <a href="/network"
+                    class="flex items-center space-x-3 p-3 rounded-r-lg sidebar-link-active font-thin tracking-wider">
+                    <i data-lucide="wifi" class="w-5 h-5"></i>
+                    <span>Network Health</span>
+                </a>
+            </li>
+            <li>
+                <a href="/records"
+                    class="flex items-center space-x-3 p-3 rounded-r-lg text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 hover:text-text-primary transition-colors duration-200 font-thin tracking-wider">
+                    <i data-lucide="database" class="w-5 h-5"></i>
+                    <span>Records</span>
+                </a>
+            </li>
+        </ul>
+
+        <div class="p-4 border-t border-border-primary">
+            <form action="/logout" method="POST" class="mb-0">
+                <button type="submit"
+                    class="w-full flex items-center justify-center space-x-3 p-3 rounded-lg bg-critical-red/80 text-white font-semibold hover:bg-critical-red focus:outline-none focus:ring-2 focus:ring-critical-red/50 transition duration-200">
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    <span>LOGOUT</span>
+                </button>
+            </form>
+        </div>
+    </nav>
+
+    <div id="main-content" class="ml-64 p-4 lg:p-8 transition-all duration-300">
+
+        <nav
+            class="bg-card-bg mb-6 px-6 py-4 rounded-xl text-sm flex justify-between items-center border border-border-primary shadow-lg">
+            <div class="flex items-center space-x-6">
+                <!-- Sidebar Toggle -->
+                <button id="sidebar-toggle-open"
+                    class="text-text-secondary hover:text-accent-cyan transition-colors focus:outline-none hidden">
+                    <i data-lucide="menu" class="w-6 h-6"></i>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <span class="text-text-secondary">STATUS:</span>
+                    <span id="system-status" class="font-bold text-normal-green flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="5" />
+                        </svg>
+                        ONLINE
+                    </span>
+                </div>
+                <div class="text-text-secondary hidden md:block">
+                    |
+                </div>
+                <div class="text-text-secondary hidden md:block">
+                    <span class="text-critical-red">URGENT ALERTS: <span id="urgent-alert-count">0</span></span>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-6">
+                <div class="text-text-secondary hidden lg:block">
+                    LOCAL TIME: <span id="utility-time" class="font-bold text-accent-cyan">--:--:--</span>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="sun" class="w-5 h-5 text-text-secondary"></i>
+                    <label for="theme-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="theme-toggle" class="sr-only peer">
+                        <div
+                            class="w-11 h-6 bg-gray-400 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent-cyan">
+                        </div>
+                    </label>
+                    <i data-lucide="moon" class="w-5 h-5 text-text-secondary"></i>
+                </div>
+            </div>
+        </nav>
+
+        <header class="text-center mb-8 max-w-7xl mx-auto">
+            <h1 class="text-3xl font-thin tracking-widest text-text-primary">NETWORK HEALTH</h1>
+        </header>
+
+        <main class="grid grid-cols-1 gap-8 items-stretch min-h-0 max-w-4xl mx-auto">
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+
+                <div class="glass-card p-6 rounded-xl flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-4">NETWORK HEALTH</h3>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="text-center p-3 rounded-lg border border-border-primary">
+                            <div id="pi-link-icon" class="text-3xl text-normal-green mb-1">
+                                <i data-lucide="server" class="w-8 h-8 mx-auto"></i>
+                            </div>
+                            <span class="text-sm text-text-secondary block">PI GATEWAY</span>
+                            <div id="pi-last-seen-s" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                        </div>
+                        <div class="text-center p-3 rounded-lg border border-border-primary">
+                            <div id="mongo-link-icon" class="text-3xl text-normal-green mb-1">
+                                <i data-lucide="database" class="w-8 h-8 mx-auto"></i>
+                            </div>
+                            <span class="text-sm text-text-secondary block">DATABASE PING</span>
+                            <div id="mongo-ping-ms" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+    </div>
+
+    <script>
+        const COLOR_MAP = {
+            'CRITICAL': { main: '#ff4d4d' },
+            'HIGH': { main: '#ffaa00' },
+            'MODERATE': { main: '#00e4ff' },
+            'NORMAL': { main: '#00ff80' },
+        };
+
+        function updateUtilityTime() {
+            const timeEl = document.getElementById('utility-time');
+            if (timeEl) {
+                const now = new Date();
+                timeEl.innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+        }
+
+        /* --- Theme Toggle Logic --- */
+        const themeToggle = document.getElementById('theme-toggle');
+        const htmlEl = document.documentElement;
+
+        function applyTheme() {
+            const storedTheme = localStorage.getItem('theme');
+            const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            if (storedTheme === 'dark' || (!storedTheme && systemPrefersDark)) {
+                htmlEl.classList.add('dark');
+                if (themeToggle) themeToggle.checked = true;
+            } else {
+                htmlEl.classList.remove('dark');
+                if (themeToggle) themeToggle.checked = false;
+            }
+        }
+
+        if (themeToggle) {
+            themeToggle.addEventListener('change', () => {
+                if (themeToggle.checked) {
+                    htmlEl.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    htmlEl.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                }
+            });
+        }
+
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+            if (!localStorage.getItem('theme')) applyTheme();
+        });
+
+        /* --- Sidebar Toggle Logic --- */
+        const sidebar = document.getElementById('sidebar');
+        const mainContent = document.getElementById('main-content');
+        const toggleOpenBtn = document.getElementById('sidebar-toggle-open');
+        const toggleCloseBtn = document.getElementById('sidebar-toggle-close');
+
+        let sidebarOpen = true;
+
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            if (sidebarOpen) {
+                sidebar.classList.remove('-translate-x-full');
+                mainContent.classList.add('ml-64');
+                mainContent.classList.remove('ml-0');
+                if (toggleOpenBtn) toggleOpenBtn.classList.add('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                mainContent.classList.remove('ml-64');
+                mainContent.classList.add('ml-0');
+                if (toggleOpenBtn) toggleOpenBtn.classList.remove('hidden');
+            }
+        }
+
+        if (toggleOpenBtn) toggleOpenBtn.addEventListener('click', toggleSidebar);
+        if (toggleCloseBtn) toggleCloseBtn.addEventListener('click', toggleSidebar);
+
+        /* --- WebSocket Logic --- */
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${proto}//${host}/ws`;
+        let ws;
+
+        function connect() {
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                const statusEl = document.getElementById('system-status');
+                if (statusEl) {
+                    statusEl.classList.add('animate-pulse');
+                    statusEl.innerText = 'ONLINE';
+                    statusEl.classList.add('text-normal-green');
+                    statusEl.classList.remove('text-critical-red');
+                }
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            };
+
+            ws.onclose = (event) => {
+                const statusEl = document.getElementById('system-status');
+                if (statusEl) {
+                    statusEl.innerText = 'OFFLINE';
+                    statusEl.classList.remove('animate-pulse', 'text-normal-green');
+                    statusEl.classList.add('text-critical-red');
+                }
+                if (event.code === 1008) {
+                    setTimeout(() => { window.location.href = '/login'; }, 3000);
+                } else {
+                    setTimeout(connect, 3000);
+                }
+            };
+
+            ws.onerror = () => {
+                console.error("WebSocket Error.");
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'system_health') {
+                    updateNetworkHealth(data);
+                }
+            };
+        }
+
+        function updateNetworkHealth(data) {
+            const piValEl = document.getElementById('pi-last-seen-s');
+            const piIconEl = document.getElementById('pi-link-icon');
+            const mongoValEl = document.getElementById('mongo-ping-ms');
+            const mongoIconEl = document.getElementById('mongo-link-icon');
+
+            let piVal = data.pi_last_seen_s;
+            let piColor = COLOR_MAP.NORMAL.main;
+            let piIcon = 'server';
+            if (piVal === 'N/A' || piVal === null) {
+                if (piValEl) piValEl.innerText = '---';
+                piColor = COLOR_MAP.CRITICAL.main;
+                piIcon = 'server-off';
+            } else {
+                piVal = parseFloat(piVal);
+                if (piValEl) piValEl.innerText = piVal.toFixed(1) + 's';
+                if (piVal > 10) {
+                    piColor = COLOR_MAP.HIGH.main;
+                    piIcon = 'server-off';
+                }
+                if (piVal > 30) {
+                    piColor = COLOR_MAP.CRITICAL.main;
+                }
+            }
+            if (piValEl) piValEl.style.color = piColor;
+            if (piIconEl) piIconEl.innerHTML = `<i data-lucide="${piIcon}" class="w-8 h-8 mx-auto" style="color: ${piColor};"></i>`;
+
+            let mongoVal = data.mongo_ping_ms;
+            let mongoColor = COLOR_MAP.NORMAL.main;
+            let mongoIcon = 'database';
+            if (mongoVal === 'N/A' || mongoVal === 'FAIL' || mongoVal === null) {
+                if (mongoValEl) mongoValEl.innerText = mongoVal === 'FAIL' ? 'FAIL' : '---';
+                mongoColor = COLOR_MAP.CRITICAL.main;
+                mongoIcon = 'database-zap';
+            } else {
+                mongoVal = parseFloat(mongoVal);
+                if (mongoValEl) mongoValEl.innerText = mongoVal.toFixed(0) + 'ms';
+                if (mongoVal > 500) {
+                    mongoColor = COLOR_MAP.HIGH.main;
+                }
+                if (mongoVal > 2000) {
+                    mongoColor = COLOR_MAP.CRITICAL.main;
+                }
+            }
+            if (mongoValEl) mongoValEl.style.color = mongoColor;
+            if (mongoIconEl) mongoIconEl.innerHTML = `<i data-lucide="${mongoIcon}" class="w-8 h-8 mx-auto" style="color: ${mongoColor};"></i>`;
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        updateUtilityTime();
+        setInterval(updateUtilityTime, 1000);
+        applyTheme();
+        connect();
+    </script>
+
+</body>
+
+</html>

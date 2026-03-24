@@ -1,0 +1,49 @@
+# IDE and environment
+.idea/
+.vscode/
+.venv/
+node_modules/
+__MACOSX/
+Archive/
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Large Model Files (AI/ML)
+Emotional/model.h5
+*.h5
+*.keras
+*.joblib
+models/
+
+# Logs and databases
+*.log
+*.sqlite
+data/
+db/
+
+# AI Tooling
+.gemini/
+
+# OS specific
+.DS_Store
+Thumbs.db
