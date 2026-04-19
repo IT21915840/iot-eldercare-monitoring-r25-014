@@ -20,6 +20,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 import uvicorn
 import aiomqtt
 from fastapi.responses import StreamingResponse
+from contextlib import asynccontextmanager
 
 # ── AI backend: TensorFlow (.h5) → tflite-runtime (.tflite) → disabled ───────
 import os
@@ -179,33 +180,37 @@ def predict_emotion(face_roi: np.ndarray, model, mode: str) -> Tuple[str, float]
         return "neutral", 0.0
 
 
-def predict_fall(frame: np.ndarray, hog, model, mode: str, labels) -> Tuple[str, float]:
+def predict_fall(frame: np.ndarray, hog, model, mode: str, labels, fallback_detected: bool = False) -> Tuple[str, float, bool]:
     try:
+        # Detect physical presence for logic gating
         (boxes, _) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
-        if len(boxes) == 0:
-            return "No person", 0.0
+        person_present = len(boxes) > 0 or fallback_detected
+        
         if model is None or labels is None:
-            return "Unknown", 0.0
+            return "Unknown", 0.0, person_present
+            
+        # Run TM Model
         resized = cv2.resize(frame, (224, 224)).astype(np.float32)
         arr     = ((resized / 127.5) - 1.0).reshape(1, 224, 224, 3)
         pred    = run_vision_inference(model, mode, arr)
-        if pred.size == 0: return "No person", 0.0
-        idx     = int(np.argmax(pred[0]))
-        raw_label = labels[idx] if idx < len(labels) else "Unknown"
         
-        # Clean the label to prevent "Not Fallen" from triggering substring checks for "Fall"
+        if pred.size == 0:
+            return "No person", 0.0, person_present
+            
+        idx = int(np.argmax(pred[0]))
+        raw_label = labels[idx] if idx < len(labels) else "Unknown"
+        conf = float(pred[0][idx] * 100)
+        
         raw_upper = raw_label.upper()
-        if "NOT" in raw_upper or "NO" in raw_upper:
-            final_label = "Normal"
-        elif "FALL" in raw_upper:
+        if "FALL" in raw_upper and "NOT" not in raw_upper and "NO" not in raw_upper:
             final_label = "A FALL HAS OCCURED"
         else:
-            final_label = raw_label
+            final_label = "Normal"
             
-        return final_label, float(pred[0][idx] * 100)
+        return final_label, conf, person_present
     except Exception as e:
         logging.warning(f"Fall inference error: {e}")
-        return "No person", 0.0
+        return "No person", 0.0, False
 
 
 def predict_sleep_stage(model, scaler, spo2: int, hr: int, temp: float) -> str:
@@ -319,26 +324,61 @@ def webcam_loop(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels)
     CAMERA_ACTIVE = True
 
     fall_counter = 0
+    person_history = []
+    
     while True:
         ret, frame = cap.read()
         if not ret: break
 
-        fall_status, fall_conf = predict_fall(frame, hog, fall_model, fall_mode, fall_labels)
-        fall_counter = (fall_counter + 1) if "fall" in str(fall_status).lower() else 0
+        # 1. Face Detection First (Used for Emotion and as a Person Fallback)
+        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+        face_detected = len(faces) > 0
+        
+        # 2. Fall Detection & Presence Parsing
+        tm_label, fall_conf, person_present = predict_fall(frame, hog, fall_model, fall_mode, fall_labels, fallback_detected=face_detected)
+        
+        # 3. Intelligent Temporal Filtering
+        person_history.append(person_present)
+        if len(person_history) > 30: # ~1 second visual memory
+            person_history.pop(0)
+            
+        recently_seen = any(person_history)
+        
+        if tm_label == "A FALL HAS OCCURED":
+            if recently_seen:
+                # Legit fall (they were present recently)
+                fall_status = "A FALL HAS OCCURED"
+            else:
+                # TM hallucinating an empty room
+                fall_status = "No person"
+                fall_conf = 0.0
+        else:
+            if person_present:
+                fall_status = "Normal"
+            else:
+                fall_status = "No person"
+                fall_conf = 0.0
 
+        # 4. Fall Alarm Logic
+        if "fall" in str(fall_status).lower():
+            fall_counter += 1
+        elif "No person" not in fall_status:
+            fall_counter = max(0, fall_counter - 1)
+        
         state = shared_state.get(pid, {})
-        state["fall_alert"] = fall_counter >= 10
+        state["fall_alert"] = fall_counter >= 3
         if state["fall_alert"]:
             fall_status = "Continuous Fall"
 
-        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-        if len(faces) > 0:
+        # 5. Emotion Detection
+        if face_detected:
             (x, y, w, h) = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
             emotion, emo_conf = predict_emotion(frame[y:y+h, x:x+w], emotion_model, emotion_mode)
         else:
             emotion, emo_conf = "No face", 0.0
 
+        # 6. Update Shared State
         state["fall"]    = (fall_status, fall_conf)
         state["emotion"] = (emotion, emo_conf)
         shared_state[pid] = state
@@ -409,8 +449,27 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
         await asyncio.sleep(reconnect_delay)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    sleep_model, sleep_scaler   = load_sleep_model()
+    emotion_model, emotion_mode = load_vision_model(EMOTION_H5, EMOTION_TFLITE)
+    fall_model, fall_mode       = load_vision_model(FALL_H5, FALL_TFLITE)
+    fall_labels                 = load_fall_labels()
+
+    logging.info("Starting camera thread ...")
+    threading.Thread(
+        target=webcam_loop,
+        args=(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels),
+        daemon=True
+    ).start()
+
+    logging.info("Starting MQTT listener ...")
+    asyncio.create_task(mqtt_listener(sleep_model, sleep_scaler))
+    yield
+
+
 # ── FastAPI app ───────────────────────────────────────────────────────────────
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/video_feed")
@@ -429,24 +488,6 @@ async def ws_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-
-
-@app.on_event("startup")
-async def startup_event():
-    sleep_model, sleep_scaler   = load_sleep_model()
-    emotion_model, emotion_mode = load_vision_model(EMOTION_H5, EMOTION_TFLITE)
-    fall_model, fall_mode       = load_vision_model(FALL_H5, FALL_TFLITE)
-    fall_labels                 = load_fall_labels()
-
-    logging.info("Starting camera thread ...")
-    threading.Thread(
-        target=webcam_loop,
-        args=(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels),
-        daemon=True
-    ).start()
-
-    logging.info("Starting MQTT listener ...")
-    asyncio.create_task(mqtt_listener(sleep_model, sleep_scaler))
 
 
 if __name__ == "__main__":

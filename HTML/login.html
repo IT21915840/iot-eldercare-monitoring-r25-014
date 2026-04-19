@@ -3,113 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Login</title>
-    <!-- Include Tailwind CSS -->
+    <title>Login | Patient Monitoring System</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/HTML/style.css">
 
-    <!-- Custom Tailwind Configuration (Copied from index.html for consistency) -->
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
                     colors: {
-                        'background': '#0a1128',
-                        'card-bg': 'rgba(12, 18, 40, 0.7)',
-                        'accent-cyan': '#00e4ff',
-                        'critical-red': '#ff4d4d',
-                        'normal-green': '#00ff80',
-                    },
-                    keyframes: {
-                        pulseNeon: {
-                            '0%, 100%': { boxShadow: '0 0 5px #00e4ff, 0 0 0px #00e4ff' },
-                            '50%': { boxShadow: '0 0 10px #00e4ff, 0 0 20px #00e4ff' },
-                        }
-                    },
-                    animation: {
-                        'neon-pulse': 'pulseNeon 3s ease-in-out infinite',
+                        'primary': 'var(--bg-primary)',
+                        'accent-primary': 'var(--accent-primary)',
+                        'text-primary': 'var(--text-primary)',
+                        'text-secondary': 'var(--text-secondary)',
                     }
                 }
             }
         }
     </script>
-
-    <!-- Custom Styles (Copied from index.html for consistency) -->
-    <style>
-        body {
-            background-color: #0a1128; /* Deep Blue Background */
-            color: #e0e7ff; /* Light, digital text color */
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* Glassmorphism Card Effect */
-        .glass-card {
-            background-color: rgba(12, 18, 40, 0.7);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
-            backdrop-filter: blur(5px);
-            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
-        }
-    </style>
 </head>
-<body class="bg-background font-sans flex items-center justify-center min-h-screen p-4">
+<body class="bg-primary text-text-primary flex items-center justify-center min-h-screen p-4 overflow-hidden relative transition-colors duration-300">
+    
+    <!-- Theme Toggle (Top Right) -->
+    <button id="theme-toggle" class="absolute top-6 right-8 p-3 rounded-full bg-black/5 dark:bg-white/10 text-text-secondary hover:text-accent-primary transition-colors focus:outline-none z-20 hover-glow">
+        <i data-lucide="sun" id="theme-icon" class="w-5 h-5"></i>
+    </button>
+
+    <!-- Background Glow Entities -->
+    <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[120px] rounded-full"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500/10 blur-[120px] rounded-full"></div>
 
     <!-- Login Card -->
-    <div class="glass-card w-full max-w-md p-8 rounded-xl shadow-2xl animate-fade-in">
+    <div class="glass-panel w-full max-w-md p-10 rounded-3xl shadow-2xl animate-fade-in relative z-10 border border-white/5">
+        
+        <!-- Branding/Icon -->
+        <div class="flex justify-center mb-8">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <i data-lucide="shield-check" class="text-white w-8 h-8"></i>
+            </div>
+        </div>
 
-        <!-- Header Text (from screenshot) -->
-        <h2 class="text-3xl font-thin tracking-widest text-white text-center">
-            Here you can Login
-        </h2>
-        <p class="text-center text-accent-cyan mb-8">
-            Let's join us :)
-        </p>
+        <!-- Header -->
+        <div class="text-center mb-10">
+            <h2 class="text-3xl font-extrabold tracking-tight text-text-primary font-outfit mb-2">
+                Authentication
+            </h2>
+            <p class="text-text-secondary font-medium">
+                Enter your credentials to access the hub
+            </p>
+        </div>
 
         <!-- Login Form -->
-        <form action="/login" method="POST">
+        <form action="/login" method="POST" class="space-y-6">
 
-            <!-- Error Message (Styled to match theme) -->
-            <div id="error-message" class="hidden text-center mb-4 p-3 rounded-lg bg-critical-red/20 text-critical-red border border-critical-red/50">
-                Invalid username or password.
+            <!-- Error Message -->
+            <div id="error-message" class="hidden flex items-center space-x-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm animate-pulse">
+                <i data-lucide="alert-circle" class="w-5 h-5 flex-shrink-0"></i>
+                <span class="font-medium">Invalid username or password.</span>
             </div>
 
-            <!-- Username Field (Changed from Email to match server) -->
-            <div class="mb-5">
-                <label for="username" class="block text-sm font-medium text-white/70 mb-2">
-                    Username
-                </label>
-                <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    required
-                    class="w-full px-4 py-3 bg-background border border-white/20 rounded-lg text-white/90 focus:ring-2 focus:ring-accent-cyan focus:border-accent-cyan focus:outline-none transition duration-200"
-                    placeholder="admin"
-                >
+            <div class="space-y-4">
+                <!-- Username -->
+                <div>
+                    <label for="username" class="block text-xs font-bold uppercase tracking-widest text-text-secondary mb-2 ml-1">
+                        Username
+                    </label>
+                    <div class="relative">
+                        <i data-lucide="user" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary"></i>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            required
+                            class="modern-input w-full pl-12 pr-4 py-4 rounded-xl font-medium"
+                            placeholder="Username"
+                        >
+                    </div>
+                </div>
+
+                <!-- Password -->
+                <div>
+                    <label for="password" class="block text-xs font-bold uppercase tracking-widest text-text-secondary mb-2 ml-1">
+                        Password
+                    </label>
+                    <div class="relative">
+                        <i data-lucide="lock" class="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-secondary"></i>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            required
+                            class="modern-input w-full pl-12 pr-12 py-4 rounded-xl font-medium"
+                            placeholder="••••••••"
+                        >
+                        <button type="button" id="toggle-password" class="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary focus:outline-none hover:text-accent-primary transition-colors">
+                            <i data-lucide="eye" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <!-- Password Field -->
-            <div class="mb-8">
-                <label for="password" class="block text-sm font-medium text-white/70 mb-2">
-                    Password
-                </label>
-                <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    required
-                    class="w-full px-4 py-3 bg-background border border-white/20 rounded-lg text-white/90 focus:ring-2 focus:ring-accent-cyan focus:border-accent-cyan focus:outline-none transition duration-200"
-                    placeholder="password"
-                >
-            </div>
-
-            <!-- Submit Button (Styled with accent color) -->
+            <!-- Submit Button -->
             <button
                 type="submit"
-                class="w-full bg-accent-cyan/80 text-background font-bold py-3 px-4 rounded-lg hover:bg-accent-cyan focus:outline-none focus:ring-4 focus:ring-accent-cyan/30 transition duration-300 transform hover:scale-[1.02]"
+                class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 flex items-center justify-center space-x-2 group"
             >
-                LOGIN
+                <span>AUTHORIZE ACCESS</span>
+                <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1 transition-transform"></i>
             </button>
         </form>
+
+        <!-- Footer Decoration -->
+        <div class="mt-10 pt-8 border-t border-white/5 flex justify-center space-x-4">
+            <div class="h-1 w-8 rounded-full bg-cyan-500/30"></div>
+            <div class="h-1 w-12 rounded-full bg-cyan-500"></div>
+            <div class="h-1 w-8 rounded-full bg-cyan-500/30"></div>
+        </div>
     </div>
 
     <script>
@@ -119,9 +131,63 @@
             if (urlParams.has('error')) {
                 document.getElementById('error-message').classList.remove('hidden');
             }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         };
-    </script>
 
+        /* UI State Management (Theme) */
+        const themeToggle = document.getElementById('theme-toggle');
+        
+        function updateThemeIcon() {
+            const isDark = document.documentElement.classList.contains('dark');
+            const iconHTML = isDark ? '<i data-lucide="moon" id="theme-icon" class="w-5 h-5"></i>' : '<i data-lucide="sun" id="theme-icon" class="w-5 h-5"></i>';
+            themeToggle.innerHTML = iconHTML;
+            lucide.createIcons();
+        }
+
+        function applyTheme() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.documentElement.classList.remove('dark');
+            } else {
+                // Default to dark
+                document.documentElement.classList.add('dark');
+            }
+            updateThemeIcon();
+        }
+        
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isDark = document.documentElement.classList.contains('dark');
+                if (isDark) {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                } else {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                }
+                updateThemeIcon();
+            });
+        }
+        applyTheme();
+
+        /* Password Visibility Toggle */
+        const togglePassword = document.getElementById('toggle-password');
+        const passwordInput = document.getElementById('password');
+        
+        if (togglePassword && passwordInput) {
+            togglePassword.addEventListener('click', function() {
+                const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+                passwordInput.setAttribute('type', type);
+                
+                // Switch icon
+                if (type === 'text') {
+                    this.innerHTML = '<i data-lucide="eye-off" class="w-5 h-5"></i>';
+                } else {
+                    this.innerHTML = '<i data-lucide="eye" class="w-5 h-5"></i>';
+                }
+                lucide.createIcons(); // re-init icons for the new node
+            });
+        }
+    </script>
 </body>
 </html>
 

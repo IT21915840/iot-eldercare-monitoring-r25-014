@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 import pytz
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, Form, HTTPException, status
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import aiomqtt
 
@@ -201,7 +202,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
+app.mount("/HTML", StaticFiles(directory="HTML"), name="HTML")
 
 # ---------------------------------------------------------------------------
 # Auth helpers
