@@ -560,7 +560,11 @@
             let fallIcon = 'shield-check';
             let fallText = 'NORMAL';
 
-            if (isFalling) {
+            if (fallStatus.includes('CONTINUOUS FALL')) {
+                fallColor = '#991b1b'; // Deep Crimson
+                fallIcon = 'siren';
+                fallText = 'CRITICAL FALL';
+            } else if (isFalling) {
                 fallColor = COLOR_MAP.CRITICAL.main;
                 fallIcon = 'bell';
                 fallText = 'FALL DETECTED';
@@ -645,20 +649,29 @@
             
             [...new Set(alerts)].forEach(status => {
                 const statusUpper = status.toUpperCase();
+                
+                // FILTER: Only show Temperature alerts if they are CRITICAL (>38.5)
+                if (statusUpper.includes('TEMPERATURE') && !statusUpper.includes('CRITICAL')) {
+                    return;
+                }
+
+                let colorHex = '#38bdf8'; // Default Sky Blue
                 let isUrgent = false;
-                let colorHex = '#0ea5e9'; // Default Accent Blue
                 let icon = 'activity';
+                let isFall = false;
                 
                 if (statusUpper.includes('CONTINUOUS FALL')) {
-                    isUrgent = true; icon = 'siren'; colorHex = '#991b1b'; // Deep Crimson Red
+                    isUrgent = true; isFall = true; icon = 'siren'; colorHex = '#991b1b'; // Deep Crimson Red
                 } else if (statusUpper.includes('FALL')) {
-                    isUrgent = true; icon = 'bell-ring'; colorHex = '#ef4444'; // Bright Red
+                    isUrgent = true; isFall = true; icon = 'bell-ring'; colorHex = '#ef4444'; // Bright Red
                 } else if (statusUpper.includes('HEART RATE: TOO HIGH')) {
                     icon = 'heart-pulse'; colorHex = '#f43f5e'; // Rose
                 } else if (statusUpper.includes('HEART RATE: TOO LOW')) {
                     icon = 'heart-crack'; colorHex = '#d946ef'; // Fuchsia
                 } else if (statusUpper.includes('SPO2')) {
                     isUrgent = true; icon = 'wind'; colorHex = '#3b82f6'; // Blue
+                } else if (statusUpper.includes('CRITICAL TEMPERATURE')) {
+                    isUrgent = true; icon = 'thermometer-sun'; colorHex = '#b91c1c'; // Dark Red
                 } else if (statusUpper.includes('TEMPERATURE')) {
                     icon = 'thermometer'; colorHex = '#f59e0b'; // Amber
                 } else if (statusUpper.includes('EMOTION')) {
@@ -671,7 +684,7 @@
                 const shouldHide = filterToggle && filterToggle.checked && !isUrgent;
 
                 const alertDiv = document.createElement('div');
-                alertDiv.className = `alert-item p-5 rounded-2xl flex items-center space-x-5 border border-white/5 bg-black/5 hover:bg-black/20 group transition-all duration-300 animate-fade-in border-l-4`;
+                alertDiv.className = `alert-item p-5 rounded-2xl flex items-center space-x-5 border border-white/5 bg-black/5 hover:bg-black/20 group transition-all duration-300 animate-fade-in border-l-4 ${isFall ? 'critical-glow' : ''}`;
                 alertDiv.style.borderLeftColor = colorHex;
                 alertDiv.dataset.urgent = isUrgent;
                 if (shouldHide) alertDiv.style.display = 'none';

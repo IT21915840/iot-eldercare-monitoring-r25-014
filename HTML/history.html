@@ -132,7 +132,7 @@
                     </div>
                     
                     <div class="relative w-full md:w-96">
-                        <input id="searchInput" type="text" placeholder="Filter by name, status, or date..." 
+                        <input id="searchInput" type="text" placeholder="Filter by Patient Health Status (Emotion & Fall)" 
                             class="w-full pl-6 pr-12 py-4 bg-black/10 border border-white/5 rounded-2xl text-sm text-text-primary placeholder:text-text-secondary/50 focus:ring-2 focus:ring-accent-primary/50 focus:outline-none transition-all duration-300">
                         <div class="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary opacity-50">
                             <i data-lucide="filter" class="w-4 h-4"></i>
@@ -144,12 +144,12 @@
                     <table class="w-full text-left">
                         <thead>
                             <tr class="border-b border-white/5">
-                                <th class="pb-6 pl-4 text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Patient</th>
-                                <th class="pb-6 text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Cardiac / O₂</th>
-                                <th class="pb-6 text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Temp</th>
-                                <th class="pb-6 text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Emotion</th>
-                                <th class="pb-6 text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Safety Status</th>
-                                <th class="pb-6 text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Timestamp</th>
+                                <th class="pb-6 pl-4 text-[11px] font-black text-text-primary uppercase tracking-widest">Patient</th>
+                                <th class="pb-6 text-[11px] font-black text-text-primary uppercase tracking-widest">Cardiac / O₂</th>
+                                <th class="pb-6 text-[11px] font-black text-text-primary uppercase tracking-widest">Temp</th>
+                                <th class="pb-6 text-[11px] font-black text-text-primary uppercase tracking-widest">Emotion</th>
+                                <th class="pb-6 text-[11px] font-black text-text-primary uppercase tracking-widest">Fall Status</th>
+                                <th class="pb-6 text-[11px] font-black text-text-primary uppercase tracking-widest">Timestamp</th>
                             </tr>
                         </thead>
                         <tbody id="recordsTable" class="divide-y divide-white/5">
@@ -266,26 +266,46 @@
                 const o2Status = (o2Value < 95) ? 'text-status-critical' : 'text-accent-primary';
                 
                 const tempValue = r.temperature ?? 0;
-                const tempStatus = (tempValue < 36.1 || tempValue > 37.2) ? 'text-status-warning' : 'text-status-online';
+                let tempStatus = 'text-status-online';
+                if (tempValue > 38.5) { tempStatus = 'text-status-critical font-black'; }
+                else if (tempValue > 37.5) { tempStatus = 'text-status-warning font-bold'; }
+                else if (tempValue < 35.5) { tempStatus = 'text-accent-primary'; }
 
-                let safetyText = r.fall_status || 'Normal';
-                let safetyColor = 'text-status-online';
-                if (safetyText.includes('Continuous')) { safetyColor = 'text-status-critical animate-pulse font-black'; safetyText = 'CRITICAL FALL'; }
-                else if (safetyText.includes('FALL')) { safetyColor = 'text-status-critical font-bold'; safetyText = 'FALL DETECTED'; }
-                else if (safetyText.toLowerCase() === 'no person') { safetyColor = 'text-text-secondary opacity-40'; safetyText = 'CLEAR'; }
+                let fallText = r.fall_status || 'Normal';
+                let fallColor = 'text-status-online';
+                if (fallText.includes('Continuous')) { 
+                    fallColor = 'text-[#991b1b] animate-pulse font-black'; 
+                    fallText = 'CRITICAL FALL'; 
+                }
+                else if (fallText.includes('FALL')) { 
+                    fallColor = 'text-status-critical font-bold'; 
+                    fallText = 'FALL DETECTED'; 
+                }
+                else if (fallText.toLowerCase() === 'no person') { 
+                    fallColor = 'text-text-secondary/60'; 
+                    fallText = 'No Person'; 
+                }
 
-                const emotionMap = {
-                    'happiness': '😊 Happy', 'sadness': '😢 Sad', 'anger': '😡 Angry',
-                    'surprise': '😲 Surprised', 'fear': '😨 Fearful', 'disgust': '🤢 Disgust',
-                    'neutral': '😐 Neutral', 'no face': 'Clear'
+                const emotionStyles = {
+                    'happiness': { icon: '😊', label: 'Happy', color: 'text-status-online' },
+                    'sadness': { icon: '😢', label: 'Sad', color: 'text-accent-primary' },
+                    'anger': { icon: '😡', label: 'Angry', color: 'text-status-critical' },
+                    'fear': { icon: '😨', label: 'Feared', color: 'text-status-critical' },
+                    'surprise': { icon: '😲', label: 'Surprised', color: 'text-status-warning' },
+                    'disgust': { icon: '🤢', label: 'Disgust', color: 'text-[#5b6b55]' },
+                    'neutral': { icon: '😐', label: 'Neutral', color: 'text-text-secondary opacity-80' },
+                    'no face': { icon: '✖️', label: 'No Face', color: 'text-text-secondary opacity-30' },
+                    'no person': { icon: '🚫', label: 'No Person', color: 'text-text-secondary opacity-30' }
                 };
-                const emoLabel = emotionMap[(r.emotion || 'neutral').toLowerCase()] || r.emotion;
+                
+                const emoKey = (r.emotion || 'neutral').toLowerCase();
+                const emoConfig = emotionStyles[emoKey] || { icon: '👤', label: r.emotion, color: 'text-text-secondary' };
 
-                const date = r._server_timestamp ? new Date(r._server_timestamp).toLocaleString('en-IN', { hour12: true }) : '---';
+                const date = r._server_timestamp ? new Date(r._server_timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }) : '---';
 
                 tr.innerHTML = `
                     <td class="py-6 pl-4">
-                        <p class="text-sm font-black text-text-primary tracking-tight uppercase">${r.patient_name || 'Anonymous'}</p>
+                        <p class="text-xs font-bold text-text-primary tracking-tight uppercase">${r.patient_name || 'Anonymous'}</p>
                     </td>
                     <td class="py-6">
                         <div class="flex items-center space-x-2">
@@ -295,16 +315,19 @@
                         </div>
                     </td>
                     <td class="py-6">
-                        <span class="${tempStatus} font-bold text-sm">${tempValue.toFixed(1)}°C</span>
+                        <span class="${tempStatus} text-sm">${tempValue.toFixed(1)}°C</span>
                     </td>
                     <td class="py-6">
-                        <span class="text-xs font-bold text-text-secondary uppercase tracking-tighter opacity-80">${emoLabel}</span>
+                        <div class="flex items-center space-x-1">
+                            <span class="text-base">${emoConfig.icon}</span>
+                            <span class="text-[10px] font-black uppercase tracking-widest ${emoConfig.color}">${emoConfig.label}</span>
+                        </div>
                     </td>
                     <td class="py-6">
-                        <span class="px-3 py-1 rounded-full bg-current/10 ${safetyColor} text-[10px] font-black uppercase tracking-widest border border-current/20">${safetyText}</span>
+                        <span class="px-3 py-1 rounded-full bg-current/10 ${fallColor} text-[10px] font-black uppercase tracking-widest border border-current/20">${fallText}</span>
                     </td>
                     <td class="py-6">
-                        <p class="text-[10px] font-black text-text-secondary opacity-50 uppercase tracking-widest">${date}</p>
+                        <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest">${date}</p>
                     </td>
                 `;
                 tableBody.appendChild(tr);

@@ -102,6 +102,17 @@ h1, h2, h3, .font-outfit {
     animation: pulse-glow 2s infinite;
 }
 
+@keyframes critical-pulse {
+    0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.4), inset 0 0 5px rgba(239, 68, 68, 0.2); transform: scale(1); }
+    50% { box-shadow: 0 0 25px rgba(239, 68, 68, 0.6), inset 0 0 15px rgba(239, 68, 68, 0.3); transform: scale(1.02); }
+}
+
+.critical-glow {
+    animation: critical-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite !important;
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    background: rgba(239, 68, 68, 0.08) !important;
+}
+
 /* Sidebar Custom Styling */
 #sidebar {
     background-color: var(--sidebar-bg);

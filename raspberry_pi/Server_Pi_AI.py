@@ -252,8 +252,14 @@ def evaluate_criticality(hr, spo2, temp, stage, fall_status, emotion, esp_crit) 
         if level != "Critical": level = "High"
     if emotion in ["anger", "fear", "sadness"] and level == "Normal":
         alerts.append(f"Negative Emotion: {emotion}"); level = "Moderate"
-    if temp < 29 or temp > 37:
-        alerts.append(f"Abnormal Temperature ({temp}°C)")
+    if temp > 38.5:
+        alerts.append(f"CRITICAL Temperature ({temp}°C)")
+        level = "Critical"
+    elif temp > 37.5:
+        alerts.append(f"Elevated Temperature ({temp}°C)")
+        if level != "Critical": level = "High"
+    elif temp < 35.5:
+        alerts.append(f"Low Temperature ({temp}°C)")
         if level == "Normal": level = "Moderate"
     if not alerts:
         alerts.append("Stable Condition")
