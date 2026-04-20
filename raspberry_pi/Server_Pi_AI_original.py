@@ -180,48 +180,37 @@ def predict_emotion(face_roi: np.ndarray, model, mode: str) -> Tuple[str, float]
         return "neutral", 0.0
 
 
-def predict_fall(frame: np.ndarray, hog, model, mode: str, labels, fallback_detected: bool = False) -> Tuple[str, float]:
+def predict_fall(frame: np.ndarray, hog, model, mode: str, labels, fallback_detected: bool = False) -> Tuple[str, float, bool]:
     try:
-        # Evaluate HOG with strict confidence weight to reject background noise (curtains, chairs)
-        (boxes, weights) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
-        valid_pedestrians = 0
-        if len(boxes) > 0 and len(weights) > 0:
-            for w in weights:
-                if (isinstance(w, (list, np.ndarray)) and w[0] > 0.4) or (isinstance(w, float) and w > 0.4):
-                    valid_pedestrians += 1
-                    
-        # If no strong physical person is boxed by HOG and no face fallback exists, it's an empty room
-        if valid_pedestrians == 0 and not fallback_detected:
-            return "No person", 0.0
-            
+        # Detect physical presence for logic gating
+        (boxes, _) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
+        person_present = len(boxes) > 0 or fallback_detected
+        
         if model is None or labels is None:
-            return "Unknown", 0.0
+            return "Unknown", 0.0, person_present
             
-        # Neural pipeline requires RGB format, whereas OpenCV uses BGR natively. Color warping causes hallucinations.
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        resized = cv2.resize(rgb_frame, (224, 224)).astype(np.float32)
+        # Run TM Model
+        resized = cv2.resize(frame, (224, 224)).astype(np.float32)
         arr     = ((resized / 127.5) - 1.0).reshape(1, 224, 224, 3)
         pred    = run_vision_inference(model, mode, arr)
         
         if pred.size == 0:
-            return "No person", 0.0
+            return "No person", 0.0, person_present
             
         idx = int(np.argmax(pred[0]))
         raw_label = labels[idx] if idx < len(labels) else "Unknown"
         conf = float(pred[0][idx] * 100)
         
         raw_upper = raw_label.upper()
-        if "NOT" in raw_upper or "NO" in raw_upper:
-            final_label = "Normal"
-        elif "FALL" in raw_upper:
+        if "FALL" in raw_upper and "NOT" not in raw_upper and "NO" not in raw_upper:
             final_label = "A FALL HAS OCCURED"
         else:
-            final_label = raw_label
+            final_label = "Normal"
             
-        return final_label, conf
+        return final_label, conf, person_present
     except Exception as e:
         logging.warning(f"Fall inference error: {e}")
-        return "No person", 0.0
+        return "No person", 0.0, False
 
 
 def predict_sleep_stage(model, scaler, spo2: int, hr: int, temp: float) -> str:
@@ -335,36 +324,50 @@ def webcam_loop(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels)
     CAMERA_ACTIVE = True
 
     fall_counter = 0
-    miss_counter = 0
-    MISS_THRESHOLD = 5  # Reduced from 20 for much snappier 'No Person' transitions
+    person_history = []
     
     while True:
         ret, frame = cap.read()
         if not ret: break
 
+        # 1. Face Detection First (Used for Emotion and as a Person Fallback)
         gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # Verify face pipeline for strong presence weighting
         faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
         face_detected = len(faces) > 0
         
-        fall_status, fall_conf = predict_fall(frame, hog, fall_model, fall_mode, fall_labels, fallback_detected=face_detected)
+        # 2. Fall Detection & Presence Parsing
+        tm_label, fall_conf, person_present = predict_fall(frame, hog, fall_model, fall_mode, fall_labels, fallback_detected=face_detected)
         
-        if "No person" in fall_status:
-            miss_counter += 1
-            if miss_counter < MISS_THRESHOLD:
-                fall_status = "Normal"
+        # 3. Intelligent Temporal Filtering
+        person_history.append(person_present)
+        if len(person_history) > 30: # ~1 second visual memory
+            person_history.pop(0)
+            
+        recently_seen = any(person_history)
+        
+        if tm_label == "A FALL HAS OCCURED":
+            if recently_seen:
+                # Legit fall (they were present recently)
+                fall_status = "A FALL HAS OCCURED"
+            else:
+                # TM hallucinating an empty room
+                fall_status = "No person"
                 fall_conf = 0.0
         else:
-            miss_counter = 0
+            if person_present:
+                fall_status = "Normal"
+            else:
+                fall_status = "No person"
+                fall_conf = 0.0
 
+        # 4. Fall Alarm Logic
         if "fall" in str(fall_status).lower():
-            # Cap counter to swiftly recover to normal upon standing
-            fall_counter = min(12, fall_counter + 1)
+            fall_counter += 1
         elif "No person" not in fall_status:
             fall_counter = max(0, fall_counter - 1)
         
         state = shared_state.get(pid, {})
-        state["fall_alert"] = fall_counter >= 8
+        state["fall_alert"] = fall_counter >= 3
         if state["fall_alert"]:
             fall_status = "Continuous Fall"
 

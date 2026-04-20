@@ -73,12 +73,12 @@
             </a>
         </div>
 
-        <div class="p-6 bg-black/10 border-t border-white/5">
+        <div class="px-6 pb-8 mt-auto pt-6">
             <form action="/logout" method="POST" class="mb-0">
                 <button type="submit"
-                    class="w-full flex items-center justify-center space-x-3 p-4 rounded-2xl bg-status-critical/10 text-status-critical font-bold hover:bg-status-critical hover:text-white transition-all duration-300">
-                    <i data-lucide="log-out" class="w-5 h-5"></i>
-                    <span>DISCONNECT</span>
+                    class="w-full flex items-center justify-center space-x-3 p-4 rounded-2xl bg-status-critical text-white font-bold transition-all duration-300 shadow-[0_0_20px_rgba(239,68,68,0.4)] hover:brightness-110 active:scale-95 group">
+                    <i data-lucide="log-out" class="w-5 h-5 transition-transform group-hover:scale-110"></i>
+                    <span class="tracking-widest uppercase">Disconnect</span>
                 </button>
             </form>
         </div>
@@ -136,15 +136,6 @@
                     <h1 id="patient-name" class="text-5xl font-black text-text-primary font-outfit tracking-tight">
                         Initializing...
                     </h1>
-                </div>
-                <div class="flex items-center space-x-4 bg-accent-glow px-6 py-4 rounded-2xl border border-accent-primary/20 backdrop-blur-md">
-                    <div class="p-3 bg-accent-primary rounded-xl shadow-lg shadow-accent-primary/20">
-                        <i data-lucide="user" class="text-white w-5 h-5"></i>
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">Database ID</p>
-                        <p id="patient-id" class="text-lg font-bold text-text-primary tracking-tight">P-000</p>
-                    </div>
                 </div>
             </div>
         </header>
@@ -240,12 +231,12 @@
             </div>
 
             <!-- Center Activity Column -->
-            <div class="xl:col-span-5 space-y-8">
+            <div class="xl:col-span-4 space-y-8">
                 
                 <!-- Sleep Analytics -->
-                <div class="glass-panel p-8 rounded-3xl group hover-glow transition-all duration-500 flex flex-col">
-                    <div class="flex justify-between items-center mb-10 gap-4">
-                        <h3 class="text-base font-black text-accent-primary uppercase tracking-widest whitespace-nowrap overflow-hidden text-ellipsis">Sleep Lifecycle Analysis</h3>
+                <div class="glass-panel p-6 rounded-3xl group hover-glow transition-all duration-500 flex flex-col">
+                    <div class="flex justify-between items-start mb-8 gap-4">
+                        <h3 class="text-base font-black text-accent-primary uppercase tracking-widest leading-tight">Sleep Lifecycle Analysis</h3>
                         <div class="bg-accent-primary/10 px-6 py-2 rounded-2xl border-2 border-accent-primary/20 shadow-md flex-shrink-0">
                              <span id="stage-value" class="text-sm font-black text-accent-primary uppercase tracking-widest font-outfit">Calibrating</span>
                         </div>
@@ -280,16 +271,16 @@
                 </div>
 
                 <!-- Vitals Timeline -->
-                <div class="glass-panel p-8 rounded-3xl h-80 group hover-glow transition-all duration-500">
-                    <div class="flex justify-between items-center mb-6">
-                        <h3 class="text-base font-black text-accent-primary uppercase tracking-widest whitespace-nowrap">Vitals Timeline</h3>
-                        <div class="flex items-center space-x-4 ml-4">
-                             <div onclick="toggleDataset(0, this)" class="flex items-center space-x-1.5 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-2 h-2 rounded-full bg-status-online"></div><span class="text-[10px] font-black uppercase tracking-widest text-status-online select-none">Heart</span></div>
-                             <div onclick="toggleDataset(1, this)" class="flex items-center space-x-1.5 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-2 h-2 rounded-full bg-accent-primary"></div><span class="text-[10px] font-black uppercase tracking-widest text-accent-primary select-none">Oxygen</span></div>
-                             <div onclick="toggleDataset(2, this)" class="flex items-center space-x-1.5 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-2 h-2 rounded-full bg-status-warning"></div><span class="text-[10px] font-black uppercase tracking-widest text-status-warning select-none">Temp</span></div>
+                <div class="glass-panel p-6 rounded-3xl h-80 group hover-glow transition-all duration-500 flex flex-col">
+                    <div class="flex justify-between items-center mb-4 w-full">
+                        <h3 class="text-sm font-black text-accent-primary uppercase tracking-widest whitespace-nowrap">Vitals Timeline</h3>
+                        <div class="flex items-center gap-2">
+                             <div onclick="toggleDataset(0, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-status-online"></div><span class="text-[9px] font-black uppercase tracking-widest text-status-online select-none">Heart</span></div>
+                             <div onclick="toggleDataset(1, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-accent-primary"></div><span class="text-[9px] font-black uppercase tracking-widest text-accent-primary select-none">Oxygen</span></div>
+                             <div onclick="toggleDataset(2, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-status-warning"></div><span class="text-[9px] font-black uppercase tracking-widest text-status-warning select-none">Temp</span></div>
                         </div>
                     </div>
-                    <div class="h-56 relative">
+                    <div class="flex-grow w-full relative -ml-2">
                         <canvas id="vitalsTrendChart"></canvas>
                     </div>
                 </div>
@@ -297,18 +288,20 @@
             </div>
 
             <!-- Right Alert Feed Column -->
-            <div class="xl:col-span-3 h-full">
-                <div class="glass-panel p-8 rounded-3xl h-full flex flex-col group hover-glow transition-all duration-500">
-                    <div class="flex justify-between items-center mb-8">
-                        <h3 class="text-[10px] font-black text-text-secondary uppercase tracking-[0.3em] opacity-60">Neural Incident Log</h3>
-                        <label class="relative inline-flex items-center cursor-pointer group">
-                            <input type="checkbox" id="urgent-filter-toggle" class="sr-only peer">
-                            <div class="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-text-secondary after:rounded-full after:h-2 after:w-2 after:transition-all peer-checked:bg-status-critical"></div>
-                            <span class="ml-2 text-[8px] font-black text-text-secondary uppercase tracking-widest group-hover:text-status-critical transition-colors">Alerts Only</span>
-                        </label>
+            <div class="xl:col-span-4 h-[600px] xl:h-[780px]">
+                <div class="glass-panel p-6 rounded-3xl h-full flex flex-col group hover-glow transition-all duration-500">
+                    <div class="flex flex-col lg:flex-row justify-between lg:items-center mb-8 border-b border-white/5 pb-4 gap-4 flex-shrink-0">
+                        <h3 class="text-sm font-black text-accent-primary uppercase tracking-[0.2em] flex items-center gap-2 drop-shadow-sm">Fall & Accident Log</h3>
+                        <div class="flex items-center gap-3">
+                            <span class="text-[9px] font-black text-text-secondary uppercase tracking-widest select-none">Urgent Alerts Only</span>
+                            <label class="relative inline-flex items-center cursor-pointer group">
+                                <input type="checkbox" id="urgent-filter-toggle" class="sr-only peer">
+                                <div class="relative w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-status-critical shadow-inner"></div>
+                            </label>
+                        </div>
                     </div>
 
-                    <div id="incidents-container" class="flex-grow space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                    <div id="incidents-container" class="flex-grow space-y-5 overflow-y-auto pr-2 custom-scrollbar">
                         <div id="incidents-placeholder" class="flex flex-col items-center justify-center h-full text-center py-20 opacity-20">
                             <i data-lucide="activity" class="w-12 h-12 mb-4 animate-pulse"></i>
                             <p class="text-[10px] font-black uppercase tracking-[0.2em]">Monitoring Link Active</p>
@@ -463,7 +456,6 @@
         function handlePatientData(data) {
             const level = data.level.toUpperCase();
             document.getElementById('patient-name').innerText = data.patient_name;
-            document.getElementById('patient-id').innerText = data.patient_id;
 
             updateGauge('hr', data.hr, level);
             updateGauge('spo2', data.spo2, level);
@@ -591,12 +583,46 @@
             let emoIcon = 'smile';
             let emoColor = '#10b981';
 
-            if (['ANGER', 'FEAR', 'SADNESS', 'DISGUST'].includes(emotion)) { 
-                emoIcon = 'frown'; emoColor = '#f59e0b'; 
-            } else if (['SURPRISE', 'NEUTRAL'].includes(emotion)) { 
-                emoIcon = 'meh'; emoColor = '#0ea5e9'; 
-            } else if (emotion === 'NO FACE') {
-                emoIcon = 'meh'; emoColor = '#9ca3af';
+            switch (emotion) {
+                case 'HAPPINESS':
+                case 'HAPPY':
+                    emoIcon = 'smile';
+                    emoColor = '#10b981'; // Emerald Green
+                    break;
+                case 'SADNESS':
+                case 'SAD':
+                    emoIcon = 'cloud-rain';
+                    emoColor = '#6366f1'; // Indigo/Purple
+                    break;
+                case 'ANGER':
+                case 'ANGRY':
+                    emoIcon = 'flame';
+                    emoColor = '#ef4444'; // Red
+                    break;
+                case 'FEAR':
+                    emoIcon = 'alert-triangle';
+                    emoColor = '#f97316'; // Orange
+                    break;
+                case 'DISGUST':
+                    emoIcon = 'thumbs-down';
+                    emoColor = '#84cc16'; // Lime/Olive
+                    break;
+                case 'SURPRISE':
+                    emoIcon = 'zap';
+                    emoColor = '#eab308'; // Yellow
+                    break;
+                case 'NEUTRAL':
+                    emoIcon = 'meh';
+                    emoColor = '#3b82f6'; // Blue
+                    break;
+                case 'NO FACE':
+                    emoIcon = 'eye-off';
+                    emoColor = '#9ca3af'; // Grey
+                    break;
+                default:
+                    emoIcon = 'activity';
+                    emoColor = '#0ea5e9';
+                    break;
             }
 
             emotionIconContainer.innerHTML = `<i data-lucide="${emoIcon}" class="w-5 h-5" style="color: ${emoColor};"></i>`;
@@ -618,19 +644,46 @@
             if (message) message.split(', ').forEach(msg => { if (msg && !msg.includes('FALL DETECTED') && msg !== 'Stable Condition') alerts.push(msg); });
             
             [...new Set(alerts)].forEach(status => {
+                const statusUpper = status.toUpperCase();
+                let isUrgent = false;
+                let colorHex = '#0ea5e9'; // Default Accent Blue
+                let icon = 'activity';
+                
+                if (statusUpper.includes('CONTINUOUS FALL')) {
+                    isUrgent = true; icon = 'siren'; colorHex = '#991b1b'; // Deep Crimson Red
+                } else if (statusUpper.includes('FALL')) {
+                    isUrgent = true; icon = 'bell-ring'; colorHex = '#ef4444'; // Bright Red
+                } else if (statusUpper.includes('HEART RATE: TOO HIGH')) {
+                    icon = 'heart-pulse'; colorHex = '#f43f5e'; // Rose
+                } else if (statusUpper.includes('HEART RATE: TOO LOW')) {
+                    icon = 'heart-crack'; colorHex = '#d946ef'; // Fuchsia
+                } else if (statusUpper.includes('SPO2')) {
+                    isUrgent = true; icon = 'wind'; colorHex = '#3b82f6'; // Blue
+                } else if (statusUpper.includes('TEMPERATURE')) {
+                    icon = 'thermometer'; colorHex = '#f59e0b'; // Amber
+                } else if (statusUpper.includes('EMOTION')) {
+                    icon = 'frown'; colorHex = '#8b5cf6'; // Violet
+                } else if (statusUpper.includes('CRITICAL THRESHOLD')) {
+                    icon = 'alert-octagon'; colorHex = '#b91c1c'; // Dark Red
+                }
+
+                const filterToggle = document.getElementById('urgent-filter-toggle');
+                const shouldHide = filterToggle && filterToggle.checked && !isUrgent;
+
                 const alertDiv = document.createElement('div');
-                const isUrgent = status.includes('FALL') || status.includes('HEART') || status.includes('SPO2');
-                alertDiv.className = `alert-item p-4 rounded-2xl flex items-center space-x-4 border border-white/5 bg-black/5 hover:bg-black/20 group transition-all duration-300 animate-fade-in ${isUrgent ? 'border-l-status-critical border-l-4' : 'border-l-accent-primary border-l-4'}`;
+                alertDiv.className = `alert-item p-5 rounded-2xl flex items-center space-x-5 border border-white/5 bg-black/5 hover:bg-black/20 group transition-all duration-300 animate-fade-in border-l-4`;
+                alertDiv.style.borderLeftColor = colorHex;
                 alertDiv.dataset.urgent = isUrgent;
+                if (shouldHide) alertDiv.style.display = 'none';
                 
                 alertDiv.innerHTML = `
-                    <div class="p-2 rounded-xl ${isUrgent ? 'bg-status-critical/10 text-status-critical' : 'bg-accent-primary/10 text-accent-primary'}">
-                        <i data-lucide="${isUrgent ? 'bell-ring' : 'activity'}" class="w-4 h-4"></i>
+                    <div class="p-3 rounded-xl flex items-center justify-center" style="background-color: ${colorHex}15; color: ${colorHex};">
+                        <i data-lucide="${icon}" class="w-5 h-5"></i>
                     </div>
-                    <div class="flex-grow">
-                        <div class="flex justify-between items-center mb-0.5">
-                            <span class="text-[10px] font-black text-text-primary uppercase tracking-widest">${status}</span>
-                            <span class="text-[8px] font-black opacity-30">${new Date().toLocaleTimeString()}</span>
+                    <div class="flex-grow flex flex-col justify-center">
+                        <div class="flex flex-col mb-1 space-y-1.5">
+                            <span class="text-[11px] font-black text-text-primary uppercase tracking-widest leading-relaxed">${status}</span>
+                            <span class="text-[9px] font-bold opacity-40 uppercase tracking-widest">${new Date().toLocaleTimeString()}</span>
                         </div>
                     </div>
                 `;
@@ -673,6 +726,20 @@
         }
 
         /* UI Events */
+        const urgentToggle = document.getElementById('urgent-filter-toggle');
+        if (urgentToggle) {
+            urgentToggle.addEventListener('change', (e) => {
+                const onlyUrgent = e.target.checked;
+                document.querySelectorAll('.alert-item').forEach(el => {
+                    if (onlyUrgent && el.dataset.urgent !== 'true') {
+                        el.style.display = 'none';
+                    } else {
+                        el.style.display = 'flex';
+                    }
+                });
+            });
+        }
+
         const themeToggle = document.getElementById('theme-toggle');
         function applyTheme() {
             if (localStorage.getItem('theme') === 'light') {

@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 # Patient and Model Configuration
 PATIENT_CONFIGS = [
-    {"id": "P001", "ip": "172.20.10.3", "name": "Patient Constantine"}
+    {"id": "P001", "ip": "172.20.10.3", "name": "Patient Fernando"}
 ]
 
 # File Paths

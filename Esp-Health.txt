@@ -2,7 +2,7 @@
  * IOT-RP: Final Optimized ESP32 Firmware
  * Component: IoT Node (Health Monitoring)
  * Sensors: MAX30105 (HR/SpO2), MAX30205 (Skin Temp)
- * Networking: Constantine Fallback + MQTT Streaming
+ * Networking: Fernando Fallback + MQTT Streaming
  */
 
 #include <Wire.h>

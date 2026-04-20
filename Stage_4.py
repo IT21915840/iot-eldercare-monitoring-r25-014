@@ -21,7 +21,7 @@ warnings.filterwarnings("ignore", category=InconsistentVersionWarning, module="s
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 PATIENT_CONFIGS = [
-    {"id": "P001", "ip": "172.20.10.3", "name": "Patient Constantine"}
+    {"id": "P001", "ip": "172.20.10.3", "name": "Patient Fernando"}
 ]
 EMOTION_MODEL_JSON = "Emotional/model.yaml"
 EMOTION_MODEL_H5 = "Emotional/model.h5"
