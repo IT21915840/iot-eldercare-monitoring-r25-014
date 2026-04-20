@@ -113,6 +113,17 @@ h1, h2, h3, .font-outfit {
     background: rgba(239, 68, 68, 0.08) !important;
 }
 
+@keyframes apnea-flash {
+    0%, 100% { border-color: rgba(239, 68, 68, 0.4); box-shadow: 0 0 10px rgba(239, 68, 68, 0.2); }
+    50% { border-color: rgba(239, 68, 68, 1); box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+}
+
+.apnea-active {
+    animation: apnea-flash 1.5s ease-in-out infinite !important;
+    border-width: 2px !important;
+    background: rgba(239, 68, 68, 0.03) !important; /* Extremely subtle tint */
+}
+
 /* Sidebar Custom Styling */
 #sidebar {
     background-color: var(--sidebar-bg);

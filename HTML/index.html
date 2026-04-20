@@ -7,8 +7,11 @@
     <title>Hub | Patient Monitoring System</title>
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link rel="stylesheet" href="/HTML/style.css">
 
     <script>
@@ -75,7 +78,7 @@
 
         <div class="px-6 pb-8 mt-auto pt-6">
             <form action="/logout" method="POST" class="mb-0">
-                <button type="submit"
+                <button type="submit" onclick="clearSession()"
                     class="w-full flex items-center justify-center space-x-3 p-4 rounded-2xl bg-status-critical text-white font-bold transition-all duration-300 shadow-[0_0_20px_rgba(239,68,68,0.4)] hover:brightness-110 active:scale-95 group">
                     <i data-lucide="log-out" class="w-5 h-5 transition-transform group-hover:scale-110"></i>
                     <span class="tracking-widest uppercase">Disconnect</span>
@@ -137,17 +140,26 @@
                         Initializing...
                     </h1>
                 </div>
+                <!-- Download Summary Button -->
+                <button onclick="generateSleepPDF()" class="group flex items-center gap-3 bg-white/5 hover:bg-accent-primary/10 border border-white/10 hover:border-accent-primary/30 px-6 py-3 rounded-2xl transition-all duration-300 shadow-lg">
+                    <div class="p-2 bg-accent-primary/10 rounded-xl text-accent-primary group-hover:scale-110 transition-transform">
+                        <i data-lucide="file-text" class="w-5 h-5"></i>
+                    </div>
+                    <div class="text-left">
+                        <p class="text-[9px] font-black text-text-secondary uppercase tracking-widest">Nightly Report</p>
+                        <p class="text-xs font-black text-text-primary uppercase tracking-widest">Download Summary</p>
+                    </div>
+                </button>
             </div>
         </header>
 
         <main class="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in" style="animation-delay: 0.2s;">
 
-            <!-- Left Stream & Overview Column -->
-            <div class="xl:col-span-4 space-y-8 h-full">
+            <!-- Column 1: Health & Sleep Lifecycle (Left) -->
+            <div class="xl:col-span-4 space-y-8">
                 
                 <!-- Health Quick-Stat Row -->
                 <div class="glass-panel p-8 rounded-3xl grid grid-cols-3 gap-6 hover-glow transition-all duration-500">
-                    <!-- Gauge Items (Refactor with unified gauge component style) -->
                     <div class="flex flex-col items-center space-y-4 group">
                         <div id="hr-gauge-base" class="w-20 h-20 rounded-full flex items-center justify-center relative p-1 transition-transform group-hover:scale-110 duration-500"
                             style="background: conic-gradient(var(--status-online) 0%, rgba(255,255,255,0.05) 0%);">
@@ -185,6 +197,63 @@
                     </div>
                 </div>
 
+                <!-- Sleep Analytics -->
+                <div class="glass-panel p-6 rounded-3xl group hover-glow transition-all duration-500 flex flex-col">
+                    <div class="flex justify-between items-start mb-2 gap-4">
+                        <h3 class="text-base font-black text-accent-primary uppercase tracking-widest leading-tight">Sleep Lifecycle Analysis</h3>
+                        <div class="bg-accent-primary/10 px-6 py-2 rounded-2xl border-2 border-accent-primary/20 shadow-md flex-shrink-0">
+                             <span id="stage-value" class="text-sm font-black text-accent-primary uppercase tracking-widest font-outfit">Calibrating</span>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between gap-6 mb-3">
+                        <div class="relative w-44 h-44 flex items-center justify-center">
+                            <div id="stage-gauge-base" class="absolute inset-0 rounded-full rotate-[-90deg] transition-all duration-1000"
+                                style="background: conic-gradient(var(--accent-primary) 0%, rgba(255,255,255,0.05) 0%);">
+                            </div>
+                            <div class="w-[85%] h-[85%] bg-primary rounded-full z-10 flex flex-col items-center justify-center p-6 text-center shadow-inner">
+                                <img src="https://img.icons8.com/isometric/512/000000/bed--v1.png" class="w-14 h-14 mb-2 opacity-60 dark:invert dark:opacity-80 transition-all duration-500 drop-shadow-sm" alt="Sleep stage icon">
+                                <p id="sleep-insight-text" class="text-xs font-black text-text-primary uppercase tracking-widest leading-snug">Ready for data</p>
+                            </div>
+                        </div>
+
+                        <div id="sleep-rankings-container" class="flex-grow space-y-4">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 border-t border-white/5 pt-2">
+                        <div class="flex flex-col">
+                            <p class="text-[9px] font-black text-text-secondary uppercase tracking-widest opacity-50 mb-1">Total Sleep Duration</p>
+                            <p id="total-sleep-duration" class="text-sm font-bold text-text-primary">--h --m</p>
+                        </div>
+                        <div class="text-right flex flex-col">
+                            <p class="text-[9px] font-black text-text-secondary uppercase tracking-widest opacity-50 mb-1">Night Awakenings</p>
+                            <p id="night-awakenings" class="text-sm font-bold text-text-primary">-- / Night</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vitals Timeline -->
+                <div class="glass-panel p-6 rounded-3xl h-80 group hover-glow transition-all duration-500 flex flex-col">
+                    <div class="flex justify-between items-center mb-4 w-full">
+                        <h3 class="text-sm font-black text-accent-primary uppercase tracking-widest whitespace-nowrap">Vitals Timeline</h3>
+                        <div class="flex items-center gap-2">
+                             <div onclick="toggleDataset(0, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-status-online"></div><span class="text-[9px] font-black uppercase tracking-widest text-status-online select-none">Heart</span></div>
+                             <div onclick="toggleDataset(1, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-accent-primary"></div><span class="text-[9px] font-black uppercase tracking-widest text-accent-primary select-none">Oxygen</span></div>
+                             <div onclick="toggleDataset(2, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-status-warning"></div><span class="text-[9px] font-black uppercase tracking-widest text-status-warning select-none">Temp</span></div>
+                        </div>
+                    </div>
+                    <div class="flex-grow w-full relative -ml-2">
+                        <canvas id="vitalsTrendChart"></canvas>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Column 2: Vision Monitoring & Risks (Center) -->
+            <div class="xl:col-span-4 space-y-8">
+                
                 <!-- Vision Feed -->
                 <div class="glass-panel p-2 rounded-[2rem] overflow-hidden group hover-glow transition-all duration-500">
                     <div class="relative w-full aspect-video rounded-[1.5rem] overflow-hidden bg-black/40">
@@ -228,67 +297,39 @@
                     </div>
                 </div>
 
-            </div>
-
-            <!-- Center Activity Column -->
-            <div class="xl:col-span-4 space-y-8">
-                
-                <!-- Sleep Analytics -->
-                <div class="glass-panel p-6 rounded-3xl group hover-glow transition-all duration-500 flex flex-col">
-                    <div class="flex justify-between items-start mb-8 gap-4">
-                        <h3 class="text-base font-black text-accent-primary uppercase tracking-widest leading-tight">Sleep Lifecycle Analysis</h3>
-                        <div class="bg-accent-primary/10 px-6 py-2 rounded-2xl border-2 border-accent-primary/20 shadow-md flex-shrink-0">
-                             <span id="stage-value" class="text-sm font-black text-accent-primary uppercase tracking-widest font-outfit">Calibrating</span>
-                        </div>
+                <!-- Respiratory Health Insight -->
+                <div id="apnea-card" class="glass-panel p-6 rounded-3xl group hover-glow transition-all duration-500 flex flex-col relative overflow-hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-xs font-black text-accent-primary uppercase tracking-[0.2em]">Respiratory Health Insight</h3>
+                        <button onclick="resetApneaInsight()" class="text-[10px] font-black text-status-moderate hover:text-accent-primary transition-colors uppercase tracking-widest flex items-center gap-1">
+                            <i data-lucide="refresh-cw" class="w-3 h-3"></i> Reset
+                        </button>
                     </div>
 
-                    <div class="flex items-center justify-between gap-10 mb-10">
-                        <div class="relative w-44 h-44 flex items-center justify-center">
-                            <div id="stage-gauge-base" class="absolute inset-0 rounded-full rotate-[-90deg] transition-all duration-1000"
-                                style="background: conic-gradient(var(--accent-primary) 0%, rgba(255,255,255,0.05) 0%);">
-                            </div>
-                            <div class="w-[85%] h-[85%] bg-primary rounded-full z-10 flex flex-col items-center justify-center p-6 text-center shadow-inner">
-                                <img src="https://img.icons8.com/isometric/512/000000/bed--v1.png" class="w-14 h-14 mb-2 opacity-60 dark:invert dark:opacity-80 transition-all drop-shadow-sm" alt="Sleep stage icon">
-                                <p id="sleep-insight-text" class="text-xs font-black text-text-primary uppercase tracking-widest leading-snug">Ready for data</p>
-                            </div>
+                    <div class="flex items-center gap-6">
+                        <div id="apnea-status-indicator" class="w-12 h-12 rounded-2xl bg-status-online/10 flex items-center justify-center text-status-online border border-status-online/10">
+                            <i data-lucide="wind" class="w-6 h-6"></i>
                         </div>
-
-                        <div id="sleep-rankings-container" class="flex-grow space-y-4">
-                            <!-- Populated via JS -->
-                        </div>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4 border-t border-white/5 pt-6">
                         <div class="flex flex-col">
-                            <p class="text-[9px] font-black text-text-secondary uppercase tracking-widest opacity-50 mb-1">Total Sleep Duration</p>
-                            <p id="total-sleep-duration" class="text-sm font-bold text-text-primary">--h --m</p>
-                        </div>
-                        <div class="text-right flex flex-col">
-                            <p class="text-[9px] font-black text-text-secondary uppercase tracking-widest opacity-50 mb-1">Night Awakenings</p>
-                            <p id="night-awakenings" class="text-sm font-bold text-text-primary">-- / Night</p>
+                            <span id="apnea-status-text" class="text-sm font-black text-text-primary uppercase tracking-widest">Normal Breathing</span>
+                            <span id="apnea-count-text" class="text-[10px] font-bold text-text-secondary uppercase tracking-widest opacity-60">0 Desaturation Events Detected</span>
                         </div>
                     </div>
-                </div>
 
-                <!-- Vitals Timeline -->
-                <div class="glass-panel p-6 rounded-3xl h-80 group hover-glow transition-all duration-500 flex flex-col">
-                    <div class="flex justify-between items-center mb-4 w-full">
-                        <h3 class="text-sm font-black text-accent-primary uppercase tracking-widest whitespace-nowrap">Vitals Timeline</h3>
-                        <div class="flex items-center gap-2">
-                             <div onclick="toggleDataset(0, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-status-online"></div><span class="text-[9px] font-black uppercase tracking-widest text-status-online select-none">Heart</span></div>
-                             <div onclick="toggleDataset(1, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-accent-primary"></div><span class="text-[9px] font-black uppercase tracking-widest text-accent-primary select-none">Oxygen</span></div>
-                             <div onclick="toggleDataset(2, this)" class="flex items-center space-x-1 cursor-pointer hover:opacity-70 transition-opacity"><div class="w-1.5 h-1.5 rounded-full bg-status-warning"></div><span class="text-[9px] font-black uppercase tracking-widest text-status-warning select-none">Temp</span></div>
-                        </div>
-                    </div>
-                    <div class="flex-grow w-full relative -ml-2">
-                        <canvas id="vitalsTrendChart"></canvas>
+                    <!-- Warning Message (Hidden by Default) -->
+                    <div id="apnea-warning-box" class="hidden mt-4 p-4 bg-status-critical/10 rounded-xl border border-status-critical/20 flex items-start gap-3">
+                        <i data-lucide="alert-octagon" class="w-4 h-4 text-status-critical mt-0.5"></i>
+                        <p class="text-[11px] font-bold text-text-primary leading-relaxed">
+                            <span class="text-status-critical font-black uppercase">Clinically Significant Event:</span> 
+                            Sudden drop in oxygen saturation detected (SpO2 < 93%). Potential Sleep Apnea episode.
+                        </p>
                     </div>
                 </div>
 
             </div>
 
-            <!-- Right Alert Feed Column -->
-            <div class="xl:col-span-4 h-[600px] xl:h-[780px]">
+            <!-- Column 3: Incident Log (Right) -->
+            <div class="xl:col-span-4 xl:h-[920px]">
                 <div class="glass-panel p-6 rounded-3xl h-full flex flex-col group hover-glow transition-all duration-500">
                     <div class="flex flex-col lg:flex-row justify-between lg:items-center mb-8 border-b border-white/5 pb-4 gap-4 flex-shrink-0">
                         <h3 class="text-sm font-black text-accent-primary uppercase tracking-[0.2em] flex items-center gap-2 drop-shadow-sm">Fall & Accident Log</h3>
@@ -311,6 +352,7 @@
             </div>
 
         </main>
+
     </div>
 
     <!-- JS Logic Remains Same (Internal implementation preserved, class targets updated) -->
@@ -453,6 +495,30 @@
             };
         }
 
+        let currentApneaStatus = 'NORMAL';
+        let apneaEventCount = 0;
+        let isCurrentlyDesaturating = false;
+
+        function resetApneaInsight() {
+            currentApneaStatus = 'NORMAL';
+            apneaEventCount = 0;
+            isCurrentlyDesaturating = false;
+            const card = document.getElementById('apnea-card');
+            const indicator = document.getElementById('apnea-status-indicator');
+            const statusText = document.getElementById('apnea-status-text');
+            const countText = document.getElementById('apnea-count-text');
+            const warningBox = document.getElementById('apnea-warning-box');
+
+            card.classList.remove('apnea-active');
+            indicator.className = 'w-12 h-12 rounded-2xl bg-status-online/10 flex items-center justify-center text-status-online border border-status-online/10';
+            indicator.innerHTML = '<i data-lucide="wind" class="w-6 h-6"></i>';
+            statusText.innerText = 'Normal Breathing';
+            statusText.className = 'text-sm font-black text-text-primary uppercase tracking-widest';
+            countText.innerText = '0 Desaturation Events Detected';
+            warningBox.classList.add('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
         function handlePatientData(data) {
             const level = data.level.toUpperCase();
             document.getElementById('patient-name').innerText = data.patient_name;
@@ -460,6 +526,36 @@
             updateGauge('hr', data.hr, level);
             updateGauge('spo2', data.spo2, level);
             updateGauge('temp', data.temp.toFixed(1), level);
+
+            // Sleep Apnea Logic (Viva Demo)
+            // 1. Detect a NEW desaturation event
+            if (data.spo2 < 93 && !isCurrentlyDesaturating) {
+                isCurrentlyDesaturating = true;
+                apneaEventCount++;
+                currentApneaStatus = 'ACTIVE'; // Keep visual alert active
+                
+                const card = document.getElementById('apnea-card');
+                const indicator = document.getElementById('apnea-status-indicator');
+                const statusText = document.getElementById('apnea-status-text');
+                const countText = document.getElementById('apnea-count-text');
+                const warningBox = document.getElementById('apnea-warning-box');
+
+                card.classList.add('apnea-active');
+                indicator.className = 'w-12 h-12 rounded-2xl bg-status-critical/20 flex items-center justify-center text-status-critical border border-status-critical/30';
+                indicator.innerHTML = '<i data-lucide="alert-circle" class="w-6 h-6"></i>';
+                statusText.innerText = 'APNEA RISK DETECTED';
+                statusText.className = 'text-sm font-black text-status-critical uppercase tracking-widest';
+                countText.innerText = `${apneaEventCount} Desaturation Event${apneaEventCount > 1 ? 's' : ''} Detected`;
+                warningBox.classList.remove('hidden');
+                
+                addAlert(`OXYGEN DESATURATION DETECTED (${data.spo2}%)`, 'CRITICAL');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                saveDashboardState();
+            } 
+            // 2. Allow detection of NEXT event once SpO2 recovers
+            else if (data.spo2 >= 95) {
+                isCurrentlyDesaturating = false;
+            }
 
             updateAIStatus(data, level);
 
@@ -471,6 +567,7 @@
                 }
             }
             updateCharts(data.timestamp, data.hr, data.spo2, data.temp);
+            saveDashboardState();
         }
 
         function updateGauge(key, value, level) {
@@ -651,7 +748,9 @@
                 const statusUpper = status.toUpperCase();
                 
                 // FILTER: Only show Temperature alerts if they are CRITICAL (>38.5)
-                if (statusUpper.includes('TEMPERATURE') && !statusUpper.includes('CRITICAL')) {
+                // Also deduplicate SpO2 (favor clinical desaturation alert over generic warning)
+                if ((statusUpper.includes('TEMPERATURE') && !statusUpper.includes('CRITICAL')) || 
+                    statusUpper.includes('WARNING: LOW SPO2')) {
                     return;
                 }
 
@@ -660,7 +759,9 @@
                 let icon = 'activity';
                 let isFall = false;
                 
-                if (statusUpper.includes('CONTINUOUS FALL')) {
+                if (statusUpper.includes('MONITORING CORE SYNCHRONIZED')) {
+                    icon = 'zap'; colorHex = '#0ea5e9';
+                } else if (statusUpper.includes('CONTINUOUS FALL')) {
                     isUrgent = true; isFall = true; icon = 'siren'; colorHex = '#991b1b'; // Deep Crimson Red
                 } else if (statusUpper.includes('FALL')) {
                     isUrgent = true; isFall = true; icon = 'bell-ring'; colorHex = '#ef4444'; // Bright Red
@@ -668,16 +769,16 @@
                     icon = 'heart-pulse'; colorHex = '#f43f5e'; // Rose
                 } else if (statusUpper.includes('HEART RATE: TOO LOW')) {
                     icon = 'heart-crack'; colorHex = '#d946ef'; // Fuchsia
-                } else if (statusUpper.includes('SPO2')) {
+                } else if (statusUpper.includes('SPO2') || statusUpper.includes('OXYGEN') || statusUpper.includes('DESATURATION')) {
                     isUrgent = true; icon = 'wind'; colorHex = '#3b82f6'; // Blue
                 } else if (statusUpper.includes('CRITICAL TEMPERATURE')) {
-                    isUrgent = true; icon = 'thermometer-sun'; colorHex = '#b91c1c'; // Dark Red
+                    isUrgent = false; icon = 'thermometer-sun'; colorHex = '#b91c1c'; // Dark Red
                 } else if (statusUpper.includes('TEMPERATURE')) {
                     icon = 'thermometer'; colorHex = '#f59e0b'; // Amber
                 } else if (statusUpper.includes('EMOTION')) {
                     icon = 'frown'; colorHex = '#8b5cf6'; // Violet
                 } else if (statusUpper.includes('CRITICAL THRESHOLD')) {
-                    icon = 'alert-octagon'; colorHex = '#b91c1c'; // Dark Red
+                    isUrgent = false; icon = 'alert-octagon'; colorHex = '#b91c1c'; // Dark Red
                 }
 
                 const filterToggle = document.getElementById('urgent-filter-toggle');
@@ -701,9 +802,10 @@
                     </div>
                 `;
                 container.prepend(alertDiv);
-                if (container.children.length > 20) container.removeChild(container.lastChild);
+                if (container.children.length > 500) container.removeChild(container.lastChild);
             });
             if (typeof lucide !== 'undefined') lucide.createIcons();
+            saveDashboardState();
         }
 
         function updateCharts(timestamp, hr, spo2, temp) {
@@ -720,6 +822,7 @@
                 vitalsTrendChart.data.datasets.forEach(d => d.data.shift());
             }
             vitalsTrendChart.update('none');
+            saveDashboardState();
         }
 
         function updateUtilityTime() {
@@ -799,12 +902,225 @@
             setTimeout(() => window.dispatchEvent(new Event('resize')), 500);
         }
         
-        toggleOpenBtn.addEventListener('click', toggleSidebar);
-        toggleCloseBtn.addEventListener('click', toggleSidebar);
-        initializeSidebar();
+        async function generateSleepPDF() {
+            const { jsPDF } = window.jspdf;
+            const patientName = document.getElementById('patient-name').innerText;
+            const dateStr = new Date().toLocaleDateString('en-GB').split('/').join('-'); // DD-MM-YYYY
+            const doc = new jsPDF('p', 'mm', 'a4');
+            const timestamp = new Date().toLocaleString();
 
-        applyTheme();
-        connect();
+            addAlert("Generating Sleep Summary Report...", "NORMAL");
+
+            // Prepare Data
+            const sleepTotal = Object.values(SLEEP_ANALYSIS_DATA).reduce((a, b) => a + b, 0);
+            const getStagePercent = (stage) => sleepTotal ? ((SLEEP_ANALYSIS_DATA[stage] / sleepTotal) * 100).toFixed(1) : 0;
+            
+            const hrs = Math.floor(totalSleepMinutes / 60);
+            const mins = Math.floor(totalSleepMinutes % 60);
+            const durationStr = `${hrs}h ${mins}m`;
+
+            // Create temporary container for report styling
+            const reportDiv = document.createElement('div');
+            reportDiv.style.width = '1000px'; // Wider to prevent chart clipping
+            reportDiv.style.padding = '50px';
+            reportDiv.style.background = '#f8fafc';
+            reportDiv.style.fontFamily = "'Outfit', sans-serif";
+            reportDiv.style.color = '#0f172a';
+            reportDiv.style.position = 'absolute';
+            reportDiv.style.left = '-9999px';
+
+            reportDiv.innerHTML = `
+                <div style="border-bottom: 2px solid #0ea5e9; padding-bottom: 25px; margin-bottom: 40px; display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <h1 style="font-size: 36px; font-weight: 900; margin: 0; color: #0f172a;">${patientName}</h1>
+                        <p style="font-size: 16px; font-weight: 700; color: #64748b; margin: 5px 0 0 0; text-transform: uppercase; letter-spacing: 0.1em;">Night Sleep Summary Report</p>
+                    </div>
+                    <div style="text-align: right;">
+                        <p style="font-size: 12px; font-weight: 900; color: #64748b; margin: 0; text-transform: uppercase;">Session Period</p>
+                        <p style="font-size: 16px; font-weight: 700; color: #0ea5e9; margin: 0;">${timestamp}</p>
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 50px; margin-bottom: 60px;">
+                    <div>
+                        <h3 style="font-size: 14px; font-weight: 900; color: #0ea5e9; text-transform: uppercase; margin-bottom: 25px; letter-spacing: 0.1em;">Sleep Architecture</h3>
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            ${Object.keys(SLEEP_ANALYSIS_DATA).map(stage => {
+                                const percent = getStagePercent(stage);
+                                const colors = { 'Awake': '#f59e0b', 'Light': '#0ea5e9', 'Deep': '#8b5cf6', 'REM': '#10b981', 'Error': '#ef4444' };
+                                return `
+                                    <div>
+                                        <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: 800; margin-bottom: 8px;">
+                                            <span>${stage} Stage</span>
+                                            <span style="color: ${colors[stage]};">${percent}%</span>
+                                        </div>
+                                        <div style="height: 10px; background: rgba(0,0,0,0.05); border-radius: 20px; overflow: hidden;">
+                                            <div style="width: ${percent}%; height: 100%; background: ${colors[stage]}; border-radius: 20px;"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border-radius: 32px; padding: 40px; box-shadow: 0 15px 40px rgba(0,0,0,0.03); display: flex; flex-direction: column; justify-content: center; gap: 30px; border: 1px solid rgba(0,0,0,0.02);">
+                        <div>
+                            <p style="font-size: 12px; font-weight: 900; color: #64748b; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.1em;">Total Sleep Duration</p>
+                            <p style="font-size: 32px; font-weight: 900; color: #0f172a; margin: 0;">${durationStr}</p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; font-weight: 900; color: #64748b; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.1em;">Night Awakenings</p>
+                            <p style="font-size: 32px; font-weight: 900; color: #0f172a; margin: 0;">${nightAwakenings} <small style="font-size: 16px; opacity: 0.5;">Events</small></p>
+                        </div>
+                        <div>
+                            <p style="font-size: 12px; font-weight: 900; color: #64748b; text-transform: uppercase; margin-bottom: 8px; letter-spacing: 0.1em;">Apnea Risk Index</p>
+                            <p style="font-size: 32px; font-weight: 900; color: #ef4444; margin: 0;">${apneaEventCount} <small style="font-size: 16px; opacity: 0.5; color: #64748b;">Detections</small></p>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                        <h3 style="font-size: 14px; font-weight: 900; color: #0ea5e9; text-transform: uppercase; letter-spacing: 0.1em; margin: 0;">Vitals Trend Analysis</h3>
+                        <div style="display: flex; gap: 20px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; background: #10b981; border-radius: 3px;"></div>
+                                <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase;">Heart Rate</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; background: #0ea5e9; border-radius: 3px;"></div>
+                                <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase;">Oxygen %</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 12px; height: 12px; background: #f59e0b; border-radius: 3px;"></div>
+                                <span style="font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase;">Temp °C</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="background: white; border-radius: 32px; padding: 30px; box-shadow: 0 15px 40px rgba(0,0,0,0.03); border: 1px solid rgba(0,0,0,0.02); overflow: hidden;">
+                        <img id="chart-img" style="width: 100%; height: auto; display: block;" />
+                    </div>
+                </div>
+
+                <div style="margin-top: 100px; padding-top: 30px; border-top: 2px solid rgba(0,0,0,0.03); text-align: center;">
+                    <p style="font-size: 12px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.2em;">Eldercare Monitoring System — AI Clinical Insight Engine</p>
+                </div>
+            `;
+
+            document.body.appendChild(reportDiv);
+
+            // Add the chart image
+            const chartDataUrl = vitalsTrendChart.toBase64Image();
+            document.getElementById('chart-img').src = chartDataUrl;
+
+            // Wait for images to load explicitly
+            await new Promise(resolve => {
+                const img = document.getElementById('chart-img');
+                if (img.complete) resolve();
+                else img.onload = resolve;
+            });
+
+            // Double check width
+            const canvas = await html2canvas(reportDiv, {
+                scale: 2,
+                backgroundColor: '#f8fafc',
+                useCORS: true,
+                allowTaint: true,
+                width: 1000,
+                height: reportDiv.scrollHeight
+            });
+
+            const imgData = canvas.toDataURL('image/jpeg', 0.95);
+            const pdfWidth = doc.internal.pageSize.getWidth();
+            const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+            doc.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            doc.save(`${patientName.split(' ').join('_')}_Sleep_Summary_(${dateStr}).pdf`);
+            
+            document.body.removeChild(reportDiv);
+            addAlert("PDF Report Downloaded Successfully", "NORMAL");
+        }
+
+        // Persistence Logic
+        function saveDashboardState() {
+            const state = {
+                alertsHtml: document.getElementById('incidents-container').innerHTML,
+                sleepData: SLEEP_ANALYSIS_DATA,
+                totalSleep: totalSleepMinutes,
+                awakenings: nightAwakenings,
+                apneaCount: apneaEventCount,
+                chartLabels: vitalsTrendChart.data.labels,
+                chartDatasets: vitalsTrendChart.data.datasets.map(d => d.data),
+                patientName: document.getElementById('patient-name').innerText,
+                urgentAlertCount: urgentAlerts
+            };
+            localStorage.setItem('dashboard_session_state', JSON.stringify(state));
+        }
+
+        function loadDashboardState() {
+            const saved = localStorage.getItem('dashboard_session_state');
+            if (!saved) return;
+            const state = JSON.parse(saved);
+            
+            // Restore Text & Stats
+            document.getElementById('patient-name').innerText = state.patientName;
+            totalSleepMinutes = state.totalSleep;
+            nightAwakenings = state.awakenings;
+            apneaEventCount = state.apneaCount;
+            urgentAlerts = state.urgentAlertCount;
+            document.getElementById('urgent-alert-count').innerText = urgentAlerts;
+
+            // Restore Sleep Data
+            Object.assign(SLEEP_ANALYSIS_DATA, state.sleepData);
+            
+            // Restore Alerts
+            const container = document.getElementById('incidents-container');
+            if (state.alertsHtml.trim()) {
+                const placeholder = document.getElementById('incidents-placeholder');
+                if (placeholder) placeholder.remove();
+                container.innerHTML = state.alertsHtml;
+            }
+
+            // Restore Charts
+            vitalsTrendChart.data.labels = state.chartLabels;
+            state.chartDatasets.forEach((data, i) => {
+                vitalsTrendChart.data.datasets[i].data = data;
+            });
+            vitalsTrendChart.update();
+
+            // Handle Apnea Card State if events exist
+            if (apneaEventCount > 0) {
+                const card = document.getElementById('apnea-card');
+                const indicator = document.getElementById('apnea-status-indicator');
+                const statusText = document.getElementById('apnea-status-text');
+                const countText = document.getElementById('apnea-count-text');
+                const warningBox = document.getElementById('apnea-warning-box');
+
+                card.classList.add('apnea-active');
+                indicator.className = 'w-12 h-12 rounded-2xl bg-status-critical/20 flex items-center justify-center text-status-critical border border-status-critical/30';
+                indicator.innerHTML = '<i data-lucide="alert-circle" class="w-6 h-6"></i>';
+                statusText.innerText = 'APNEA RISK DETECTED';
+                statusText.className = 'text-sm font-black text-status-critical uppercase tracking-widest';
+                countText.innerText = `${apneaEventCount} Desaturation Event${apneaEventCount > 1 ? 's' : ''} Detected`;
+                warningBox.classList.remove('hidden');
+            }
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function clearSession() {
+            localStorage.removeItem('dashboard_session_state');
+        }
+
+        window.onload = () => {
+             loadDashboardState();
+             initializeSidebar();
+             toggleOpenBtn.addEventListener('click', toggleSidebar);
+             toggleCloseBtn.addEventListener('click', toggleSidebar);
+             applyTheme();
+             connect();
+        };
+
         setInterval(updateUtilityTime, 1000);
     </script>
 </body>
