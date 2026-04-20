@@ -23,12 +23,13 @@ Before you start, ensure you have the following installed on your laptop:
 ## 🗂️ Setup Instructions
 
 ### 1. Clone the Project
-Open your terminal and run:
+Open your terminal, navigate to where you want the project to live (e.g., your Documents folder), and run:
 ```bash
 git clone https://github.com/IT21915840/iot-eldercare-monitoring-r25-014.git
 cd iot-eldercare-monitoring-r25-014
 git checkout network  # Switch to the network branch
 ```
+*Note: This will create a folder named `iot-eldercare-monitoring-r25-014` in your current directory.*
 
 ### 2. Install Dependencies
 Create a virtual environment and install the required libraries:
@@ -43,11 +44,15 @@ pip install -r requirements.txt
 ```
 
 ### 3. ⚠️ Manual File Transfer (CRITICAL)
-Due to size limits, the following AI model files are **not** in the Git repository. You must manually copy these from the project owner:
+Due to size limits, the following AI model files are **not** in the Git repository. You must manually copy these from the project owner and place them in these exact folders:
 
-- `Emotional/model.h5` (Emotion detection)
-- `Fall_detection/keras_Model.h5` (Fall detection)
-- `Fall_detection/labels.txt`
+| File Name | Destination Folder (within project root) |
+| :--- | :--- |
+| `model.h5` | `/Emotional/` |
+| `emotion_model.tflite` | `/Emotional/` |
+| `keras_Model.h5` | `/Fall_detection/` |
+| `fall_model.tflite` | `/Fall_detection/` |
+| `labels.txt` | `/Fall_detection/` |
 
 Ensure these are placed in their respective folders before running the AI server.
 
