@@ -103,3 +103,30 @@ If you are running the AI Vision engine on a Raspberry Pi and the Dashboard on y
 3.  **Ensure Same Network**: Both the Pi and the Laptop must be connected to the same WiFi/Network.
 4.  **Remote Access**: We highly recommend using the VS Code **Remote - SSH** extension. It allows you to edit code on the Pi directly from your laptop without needing a separate monitor for the Pi.
 
+---
+
+## 🔌 Physical Hardware Integration
+If you are ready to move from Mock data to **Real Sensor Data** using an ESP32:
+
+### 1. Hardware Requirements
+- **ESP32 DevKit V1**
+- **MAX30102** (Pulse Oximeter & Heart-Rate Sensor)
+- **MAX30205** (Body Temperature Sensor)
+
+### 2. Firmware Setup
+1.  **Code**: Open the `Esp-Health.txt` file in the project root. This is your C++ firmware.
+2.  **IDE**: Open Arduino IDE and install the following libraries:
+    -   `SparkFun MAX3010x`
+    -   `PubSubClient`
+    -   `WiFiManager`
+    -   `ArduinoJson`
+3.  **Flash**: Connect your ESP32 to your laptop and upload the code.
+
+### 3. Connection (Setup Portal)
+1.  Once flashed, the ESP32 will create a WiFi hotspot named **`IOT-RP-SETUP`**.
+2.  Connect to this hotspot using your phone or laptop.
+3.  A configuration page will appear. Click **Configure WiFi**.
+4.  Enter your home/lab WiFi credentials.
+5.  **Important**: In the `MQTT Broker IP` field, enter the **Local IP of the computer running Server_Main.py**.
+6.  Click **Save**. The ESP32 will reboot and begin streaming live vitals to your dashboard!
+
