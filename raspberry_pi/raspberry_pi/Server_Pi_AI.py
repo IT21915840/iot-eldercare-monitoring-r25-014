@@ -1,9 +1,4 @@
-import sys
 import asyncio
-
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 import json
 import logging
 import datetime
@@ -13,20 +8,27 @@ import warnings
 import cv2
 import numpy as np
 import threading
-import os
 import time
 from typing import Dict, Any, Tuple, List, Optional
 from sklearn.base import InconsistentVersionWarning
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import uvicorn
 import aiomqtt
 from fastapi.responses import StreamingResponse
-from contextlib import asynccontextmanager
+import os
+import sys
+
+def resolve_path(path: str) -> str:
+    """Helper to find files in current or parent directory."""
+    if os.path.exists(path):
+        return path
+    parent_path = os.path.join("..", path)
+    if os.path.exists(parent_path):
+        return parent_path
+    return path # Return original if not found to let loader handle missing file error
 
 # ── AI backend: TensorFlow (.h5) → tflite-runtime (.tflite) → disabled ───────
-import os
-os.environ["TF_USE_LEGACY_KERAS"] = "1"
-
 KERAS_AVAILABLE  = False
 TFLITE_AVAILABLE = False
 tf               = None
@@ -59,22 +61,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 MQTT_BROKER_HOST = "localhost"
 MQTT_PORT        = 1883
 MQTT_TOPIC_RAW   = "vitals/raw"
-MQTT_TOPIC_PROCESSED = "vitals/processed"
-MQTT_TOPIC_STATUS = "vitals/status"
 
 PATIENT_CONFIGS = [
-    {"id": "P001", "name": "Patient Fernando"}
+    {"id": "P001", "name": "Patient Constantine"}
 ]
 
 # ── Model paths (.h5 preferred when TF available, .tflite as fallback) ────────
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-EMOTION_H5     = os.path.join(BASE_DIR, "Emotional", "model.h5")
-EMOTION_TFLITE = os.path.join(BASE_DIR, "Emotional", "emotion_model.tflite")
-FALL_H5        = os.path.join(BASE_DIR, "Fall_detection", "keras_Model.h5")
-FALL_TFLITE    = os.path.join(BASE_DIR, "Fall_detection", "fall_model.tflite")
-FALL_LABELS_TXT  = os.path.join(BASE_DIR, "Fall_detection", "labels.txt")
+EMOTION_H5     = "Emotional/model.h5"
+EMOTION_TFLITE = "Emotional/emotion_model.tflite"
+FALL_H5        = "Fall_detection/keras_Model.h5"
+FALL_TFLITE    = "Fall_detection/fall_model.tflite"
+FALL_LABELS_TXT  = "Fall_detection/labels.txt"
 HAAR_CASCADE_PATH = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+CAPTURES_DIR    = "captures"
+
+# Ensure captures directory exists
+if not os.path.exists(CAPTURES_DIR):
+    os.makedirs(CAPTURES_DIR)
+    logging.info(f"Created captures directory: {CAPTURES_DIR}")
 
 EMOTION_MAPPER = {
     0: "anger", 1: "disgust", 2: "fear", 3: "happiness",
@@ -87,35 +91,29 @@ SharedState = Dict[str, Dict[str, Any]]
 # ── Model loader: tries Keras .h5 first, then .tflite ────────────────────────
 def load_vision_model(h5_path: str, tflite_path: str):
     """Returns (model_object, mode) where mode is 'keras' or 'tflite'."""
-    if KERAS_AVAILABLE and tf is not None:
-        import os
-        if os.path.exists(h5_path):
-            try:
-                class CustomDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
-                    def __init__(self, **kwargs):
-                        kwargs.pop('groups', None)
-                        super().__init__(**kwargs)
+    h5_res = resolve_path(h5_path)
+    tf_res = resolve_path(tflite_path)
 
-                model = tf.keras.models.load_model(
-                    h5_path, 
-                    custom_objects={'DepthwiseConv2D': CustomDepthwiseConv2D}, 
-                    compile=False
-                )
-                logging.info(f"Keras model loaded: {h5_path}")
+    if KERAS_AVAILABLE and tf is not None:
+        if os.path.exists(h5_res):
+            try:
+                model = tf.keras.models.load_model(h5_res, compile=False)
+                logging.info(f"Keras model loaded: {h5_res}")
                 return model, "keras"
             except Exception as e:
-                logging.warning(f"Keras load failed for {h5_path}: {e}")
+                logging.warning(f"Keras load failed for {h5_res}: {e}")
+    
     if TFLITE_AVAILABLE and TFLiteInterpreter is not None:
-        import os
-        if os.path.exists(tflite_path):
+        if os.path.exists(tf_res):
             try:
-                interp = TFLiteInterpreter(model_path=tflite_path)
+                interp = TFLiteInterpreter(model_path=tf_res)
                 interp.allocate_tensors()
-                logging.info(f"TFLite model loaded: {tflite_path}")
+                logging.info(f"TFLite model loaded: {tf_res}")
                 return interp, "tflite"
             except Exception as e:
-                logging.warning(f"TFLite load failed for {tflite_path}: {e}")
-    logging.warning(f"No model available at {h5_path} or {tflite_path}")
+                logging.warning(f"TFLite load failed for {tf_res}: {e}")
+    
+    logging.warning(f"No model available at {h5_res} or {tf_res}")
     return None, None
 
 
@@ -136,11 +134,13 @@ def run_vision_inference(model, mode: str, input_arr: np.ndarray) -> np.ndarray:
 
 def load_sleep_model():
     try:
-        model_path = os.path.join(BASE_DIR, "Sleep", "sleep_stage_model.joblib")
-        scaler_path = os.path.join(BASE_DIR, "Sleep", "scaler.joblib")
+        model_path = resolve_path("Sleep/sleep_stage_model.joblib")
+        scaler_path = resolve_path("Sleep/scaler.joblib")
+        if not os.path.exists(model_path): return None, None
+        
         model  = joblib.load(model_path)
         scaler = joblib.load(scaler_path)
-        logging.info("Sleep model loaded.")
+        logging.info(f"Sleep models loaded from {os.path.dirname(model_path)}")
         return model, scaler
     except Exception as e:
         logging.error(f"Sleep model load failed: {e}")
@@ -149,8 +149,23 @@ def load_sleep_model():
 
 def load_fall_labels() -> Optional[List[str]]:
     try:
-        with open(FALL_LABELS_TXT, "r") as f:
-            return [ln.strip() for ln in f.readlines()]
+        path = resolve_path(FALL_LABELS_TXT)
+        if not os.path.exists(path):
+            return None
+        with open(path, "r") as f:
+            lines = f.readlines()
+        
+        parsed_labels = []
+        for line in lines:
+            line = line.strip()
+            if not line: continue
+            # Handle "0 Fallen" or "Fallen"
+            parts = line.split(' ', 1)
+            if len(parts) > 1 and parts[0].isdigit():
+                parsed_labels.append(parts[1].strip())
+            else:
+                parsed_labels.append(line)
+        return parsed_labels
     except Exception as e:
         logging.error(f"Fall labels load failed: {e}")
         return None
@@ -182,45 +197,33 @@ def predict_emotion(face_roi: np.ndarray, model, mode: str) -> Tuple[str, float]
         return "neutral", 0.0
 
 
-def predict_fall(frame: np.ndarray, hog, model, mode: str, labels, fallback_detected: bool = False) -> Tuple[str, float]:
+def predict_fall(frame: np.ndarray, hog, model, mode: str, labels) -> Tuple[str, float]:
     try:
-        # Evaluate HOG with strict confidence weight to reject background noise (curtains, chairs)
-        (boxes, weights) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
-        valid_pedestrians = 0
-        if len(boxes) > 0 and len(weights) > 0:
-            for w in weights:
-                if (isinstance(w, (list, np.ndarray)) and w[0] > 0.4) or (isinstance(w, float) and w > 0.4):
-                    valid_pedestrians += 1
-                    
-        # If no strong physical person is boxed by HOG and no face fallback exists, it's an empty room
-        if valid_pedestrians == 0 and not fallback_detected:
-            return "No person", 0.0
-            
         if model is None or labels is None:
             return "Unknown", 0.0
-            
-        # Neural pipeline requires RGB format, whereas OpenCV uses BGR natively. Color warping causes hallucinations.
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        resized = cv2.resize(rgb_frame, (224, 224)).astype(np.float32)
+        
+        # HOG check removed because it often fails to detect a 'person' when they are lying on the floor.
+        # This was likely preventing the AI model from even running.
+        # (boxes, weights) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
+        # if len(boxes) == 0:
+        #     return "No person", 0.0
+
+        # Preprocessing: Use BGR
+        resized = cv2.resize(frame, (224, 224), interpolation=cv2.INTER_AREA).astype(np.float32)
+        # Normalization: [-1, 1]
         arr     = ((resized / 127.5) - 1.0).reshape(1, 224, 224, 3)
+        
         pred    = run_vision_inference(model, mode, arr)
+        if pred.size == 0: return "No person", 0.0
         
-        if pred.size == 0:
-            return "No person", 0.0
-            
-        idx = int(np.argmax(pred[0]))
-        raw_label = labels[idx] if idx < len(labels) else "Unknown"
-        conf = float(pred[0][idx] * 100)
+        idx     = int(np.argmax(pred[0]))
+        confidence = float(pred[0][idx] * 100)
+        label = labels[idx] if idx < len(labels) else "Unknown"
         
-        raw_upper = raw_label.upper()
-        if "NOT" in raw_upper or "NO" in raw_upper:
-            final_label = "Normal"
-        elif "FALL" in raw_upper:
-            final_label = "A FALL HAS OCCURED"
-        else:
-            final_label = raw_label
+        # Logging for identifying accuracy issues
+        logging.info(f"[AI] Model Prediction: {label} ({confidence:.1f}%)")
             
-        return final_label, conf
+        return label, confidence
     except Exception as e:
         logging.warning(f"Fall inference error: {e}")
         return "No person", 0.0
@@ -237,31 +240,27 @@ def predict_sleep_stage(model, scaler, spo2: int, hr: int, temp: float) -> str:
 
 
 def evaluate_criticality(hr, spo2, temp, stage, fall_status, emotion, esp_crit) -> Tuple[str, str]:
+    # Determine if sensors are actually connected (ignoring all zeros)
+    is_disconnected = (hr == 0 and spo2 == 0 and temp == 0)
+    
+    if is_disconnected:
+        return "Normal", "SENSOR DISCONNECTED"
+
     alerts, level = [], "Normal"
     if esp_crit == 1:
         alerts.append("SENSOR CRITICAL THRESHOLD"); level = "Critical"
-    if isinstance(fall_status, str) and "fall" in fall_status.lower():
+    if isinstance(fall_status, str) and fall_status.lower().strip() == "fallen":
         alerts.append("AI FALL DETECTED"); level = "Critical"
-    if hr > 100:
-        alerts.append(f"Abnormal Heart Rate: Too High ({hr} BPM)")
+    if hr < 40 or hr > 150:
+        alerts.append("Extreme Heart Rate")
         if level != "Critical": level = "High"
-    elif hr < 55:
-        alerts.append(f"Abnormal Heart Rate: Too Low ({hr} BPM)")
-        if level != "Critical": level = "High"
-        
-    if spo2 < 90:
-        alerts.append(f"Warning: Low SpO2 ({spo2}%)")
+    elif spo2 < 90:
+        alerts.append("Warning: Low SpO2")
         if level != "Critical": level = "High"
     if emotion in ["anger", "fear", "sadness"] and level == "Normal":
         alerts.append(f"Negative Emotion: {emotion}"); level = "Moderate"
-    if temp > 38.5:
-        alerts.append(f"CRITICAL Temperature ({temp}°C)")
-        level = "Critical"
-    elif temp > 37.5:
-        alerts.append(f"Elevated Temperature ({temp}°C)")
-        if level != "Critical": level = "High"
-    elif temp < 35.5:
-        alerts.append(f"Low Temperature ({temp}°C)")
+    if temp < 29 or temp > 37:
+        alerts.append("Abnormal Temperature")
         if level == "Normal": level = "Moderate"
     if not alerts:
         alerts.append("Stable Condition")
@@ -298,8 +297,8 @@ shared_state: SharedState = {
 
 # ── Global Frame Buffer for Streaming ──────────────────────────────────────────
 current_frame: Optional[np.ndarray] = None
+manual_fall_trigger: bool = False
 frame_lock = threading.Lock()
-CAMERA_ACTIVE = False
 
 def get_drawing_frame():
     global current_frame
@@ -309,17 +308,7 @@ def get_drawing_frame():
         return current_frame.copy()
 
 async def generate_mjpeg():
-    # Wait for the first frame to populate to prevent hanging the initial HTTP headers
-    timeout = 0
-    while get_drawing_frame() is None:
-        await asyncio.sleep(0.1)
-        timeout += 1
-        if timeout > 50: # 5 seconds
-            break
-
     while True:
-        if not CAMERA_ACTIVE:
-            break
         frame = get_drawing_frame()
         if frame is not None:
             ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
@@ -331,15 +320,15 @@ async def generate_mjpeg():
 
 # ── Camera thread ─────────────────────────────────────────────────────────────
 def webcam_loop(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels) -> None:
-    global CAMERA_ACTIVE
+    global current_frame, manual_fall_trigger
     face_cascade, hog = load_detectors()
     pid = PATIENT_CONFIGS[0]["id"]
-    # --- Improved Camera Discovery ---
+    
     cap = None
     for i in range(5):
         temp_cap = cv2.VideoCapture(i)
         if temp_cap.isOpened():
-            time.sleep(0.5) # Warm up
+            time.sleep(0.5) # Allow webcam to warm up
             cap = temp_cap
             logging.info(f"Camera found successfully at index {i}")
             break
@@ -348,87 +337,103 @@ def webcam_loop(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels)
 
     if cap is None:
         logging.warning("No camera found — vision AI disabled.")
-        CAMERA_ACTIVE = False
         return
-    
-    CAMERA_ACTIVE = True
-
-    # --- Motion Detection setup ---
-    fgbg = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
-    MOTION_FALL_THRESHOLD = 20000  # Adjust based on camera height
 
     fall_counter = 0
-    miss_counter = 0
-    MISS_THRESHOLD = 5  # Reduced from 20 for much snappier 'No Person' transitions
+    last_capture_time = 0
+    CAPTURE_COOLDOWN = 10 # seconds
+    
+    # Motion Detection variables
+    fgbg = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
+    motion_history = []
+    MOTION_FALL_THRESHOLD = 30000  # Increased significantly to ignore random noise/shadows
     
     while True:
         ret, frame = cap.read()
         if not ret: break
-
-        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        # Verify face pipeline for strong presence weighting
-        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
-        face_detected = len(faces) > 0
         
-        # --- Fall Detection (AI + Motion) ---
-        fall_status, fall_conf = predict_fall(frame, hog, fall_model, fall_mode, fall_labels, fallback_detected=face_detected)
+        # 1. AI Detection
+        fall_status, fall_conf = predict_fall(frame, hog, fall_model, fall_mode, fall_labels)
+        # REQUIRE strict confidence (>= 75%) to prevent background from triggering false positive "falls"
+        is_falling_ai = "fall" in str(fall_status).lower() and fall_conf >= 75.0
         
-        # Motion Check (as backup/heuristic)
+        # 2. Motion Detection (Heuristic for any falling object)
         fgmask = fgbg.apply(frame)
+        # We look for large motion in the bottom half of the screen
         height, width = fgmask.shape
         bottom_half = fgmask[height//2:, :]
         motion_count = cv2.countNonZero(bottom_half)
         
-        is_falling_ai = "fall" in str(fall_status).lower() and fall_conf >= 70.0
-        is_falling_motion = motion_count > MOTION_FALL_THRESHOLD
+        # Log motion for tuning
+        if motion_count > 1000:
+            logging.debug(f"[MOTION] Count: {motion_count}")
+
+        # Heuristic: If sudden large motion in bottom half
+        is_falling_motion = (motion_count > MOTION_FALL_THRESHOLD)
         
-        # Consolidate status
-        if is_falling_motion and not is_falling_ai:
-            fall_status = "Motion Fall detected"
-            fall_conf = 100.0
-            logging.info(f"[MOTION] Falling object detected: {motion_count}px")
+        # 3. Hybrid Logic: Either AI or Motion triggers the "Fallen" state
+        is_falling = is_falling_ai or is_falling_motion or manual_fall_trigger
         
-        if "No person" in fall_status:
-            miss_counter += 1
-            if miss_counter < MISS_THRESHOLD:
-                fall_status = "Normal"
-                fall_conf = 0.0
+        if manual_fall_trigger:
+            fall_counter = 20
+            manual_fall_trigger = False
+            logging.info("MANUAL FALL TRIGGERED VIA API")
+
+        if is_falling:
+            fall_counter = min(fall_counter + 1, 20) # Ramp up by +1 per frame so it requires consistent falling!
+            if is_falling_motion:
+                logging.info(f"[MOTION] Significant object/motion detected ({motion_count}px)")
         else:
-            miss_counter = 0
+            fall_counter = max(fall_counter - 1, 0)   # Decrease slower so temporary missed frame doesn't ruin it
 
-        if "fall" in str(fall_status).lower():
-            # Cap counter to swiftly recover to normal upon standing
-            fall_counter = min(12, fall_counter + 1)
-        elif "No person" not in fall_status:
-            fall_counter = max(0, fall_counter - 1)
-        
+        # 4. Draw Debug Info on Frame (Visible on Dashboard)
+        debug_frame = frame.copy()
+        color = (0, 0, 255) if is_falling else (0, 255, 0)
+        cv2.putText(debug_frame, f"AI: {fall_status} ({fall_conf:.1f}%)", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        cv2.putText(debug_frame, f"Motion: {motion_count}", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        if fall_counter > 0:
+            cv2.rectangle(debug_frame, (0, 0), (int(width * (fall_counter/20)), 10), (0, 0, 255), -1)
+
+        # Update global frame for MJPEG stream
+        with frame_lock:
+            current_frame = debug_frame
+
         state = shared_state.get(pid, {})
-        state["fall_alert"] = fall_counter >= 8
+        # Trigger alert if the counter reaches 10 (~1 full second of reliable fall detection)
+        state["fall_alert"] = (fall_counter >= 10)
         if state["fall_alert"]:
+            # Only log "ALERT TRIGGERED" when it's first activated
+            if not state.get("was_logged"):
+                logging.info("!!! FALL ALERT TRIGGERED !!!")
+                state["was_logged"] = True
             fall_status = "Continuous Fall"
+            
+            # Capture logic
+            now = time.time()
+            if now - last_capture_time > CAPTURE_COOLDOWN:
+                ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = os.path.join(CAPTURES_DIR, f"fall_{ts}.jpg")
+                cv2.imwrite(filename, frame)
+                logging.info(f"FALL CAPTURED: {filename}")
+                last_capture_time = now
+        else:
+            state["was_logged"] = False
 
-        # 5. Emotion Detection
-        if face_detected:
+        gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.1, 5, minSize=(30, 30))
+        if len(faces) > 0:
             (x, y, w, h) = sorted(faces, key=lambda f: f[2]*f[3], reverse=True)[0]
             emotion, emo_conf = predict_emotion(frame[y:y+h, x:x+w], emotion_model, emotion_mode)
         else:
             emotion, emo_conf = "No face", 0.0
 
-        # 6. Update Shared State
         state["fall"]    = (fall_status, fall_conf)
         state["emotion"] = (emotion, emo_conf)
         shared_state[pid] = state
 
         # Update global frame for streaming
-        global current_frame
-        # --- Draw Labels for Video Feed ---
-        debug_frame = frame.copy()
-        color = (0, 0, 255) if ("fall" in str(fall_status).lower()) else (0, 255, 0)
-        cv2.putText(debug_frame, f"Fall: {fall_status} ({fall_conf:.1f}%)", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-        cv2.putText(debug_frame, f"Emo: {emotion} ({emo_conf:.1f}%)", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-        
         with frame_lock:
-            current_frame = debug_frame
+            current_frame = frame.copy()
 
 
 # ── MQTT listener ─────────────────────────────────────────────────────────────
@@ -439,11 +444,9 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
             logging.info(f"[MQTT] Connecting to {MQTT_BROKER_HOST}:{MQTT_PORT} ...")
             async with aiomqtt.Client(hostname=MQTT_BROKER_HOST, port=MQTT_PORT) as client:
                 await client.subscribe(MQTT_TOPIC_RAW)
-                await client.subscribe(MQTT_TOPIC_STATUS)
-                logging.info(f"[MQTT] Connected. Subscribed to '{MQTT_TOPIC_RAW}' and '{MQTT_TOPIC_STATUS}'")
+                logging.info(f"[MQTT] Subscribed to '{MQTT_TOPIC_RAW}'")
                 async for message in client.messages:
                     try:
-                        logging.info(f"[MQTT RECV] Topic: {message.topic}")
                         raw  = json.loads(message.payload)
                         pid  = str(raw.get("pid", PATIENT_CONFIGS[0]["id"]))
                         hr   = int(raw.get("hr",   0))
@@ -451,10 +454,11 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
                         temp = float(raw.get("temp", 0.0))
                         crit = int(raw.get("crit",  0))
 
-                        # Hybrid Logic: Use provided stage (e.g. from Mock/Sensor) if available, otherwise predict via AI
-                        stage = raw.get("stage")
-                        if not stage or stage == "Warmup":
-                            stage = predict_sleep_stage(sleep_model, sleep_scaler, spo2, hr, temp)
+                        # Store vitals in shared_state for broadcaster
+                        if pid in shared_state:
+                            shared_state[pid]["vitals"] = {"hr": hr, "spo2": spo2, "temp": temp, "crit": crit}
+
+                        stage         = predict_sleep_stage(sleep_model, sleep_scaler, spo2, hr, temp)
                         patient_state = shared_state.get(pid, shared_state[PATIENT_CONFIGS[0]["id"]])
                         fall_status, fall_conf = patient_state.get("fall", ("No person", 0.0))
                         emotion, emo_conf      = patient_state.get("emotion", ("neutral", 0.0))
@@ -480,10 +484,9 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
                             "timestamp":          datetime.datetime.now().strftime("%H:%M:%S"),
                         }
 
-                        payload_str = json.dumps(payload)
-                        await manager.broadcast(payload_str)
-                        await client.publish(MQTT_TOPIC_PROCESSED, payload=payload_str)
-                        logging.info(f"[BROADCAST & PUBLISH] {pid} HR:{hr} SpO2:{spo2} Temp:{temp} → {level}")
+                        # BROADCAST REMOVED FROM HERE
+                        # await manager.broadcast(json.dumps(payload))
+                        logging.debug(f"[MQTT] Update for {pid}")
 
                     except Exception as e:
                         logging.warning(f"[MQTT] Processing error: {e}")
@@ -492,6 +495,8 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
             logging.error(f"[MQTT] Broker error: {e}. Retrying in {reconnect_delay}s ...")
         await asyncio.sleep(reconnect_delay)
 
+
+# ── FastAPI app ───────────────────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -509,17 +514,23 @@ async def lifespan(app: FastAPI):
 
     logging.info("Starting MQTT listener ...")
     asyncio.create_task(mqtt_listener(sleep_model, sleep_scaler))
+
+    logging.info("Starting Periodic broadcaster ...")
+    asyncio.create_task(periodic_broadcaster(sleep_model, sleep_scaler))
     yield
 
-
-# ── FastAPI app ───────────────────────────────────────────────────────────────
 app = FastAPI(lifespan=lifespan)
+
+
+@app.post("/trigger_fall")
+async def trigger_fall_api():
+    global manual_fall_trigger
+    manual_fall_trigger = True
+    return {"status": "success"}
 
 
 @app.get("/video_feed")
 async def video_feed():
-    if not CAMERA_ACTIVE:
-        raise HTTPException(status_code=503, detail="Camera hardware offline.")
     return StreamingResponse(generate_mjpeg(), media_type="multipart/x-mixed-replace; boundary=frame")
 
 
@@ -534,13 +545,57 @@ async def ws_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 
-if __name__ == "__main__":
-    if sys.platform == 'win32':
-        loop = asyncio.SelectorEventLoop()
-        asyncio.set_event_loop(loop)
-    else:
-        loop = asyncio.get_event_loop()
+async def periodic_broadcaster(sleep_model, sleep_scaler):
+    """Periodically broadcasts the full patient state (vitals + AI) to all clients."""
+    logging.info("Broadcaster task started.")
+    while True:
+        try:
+            for pid, patient_state in shared_state.items():
+                # We need the latest vitals too. For now, since this script
+                # doesn't persist raw vitals in shared_state, we only broadcast
+                # when shared_state changes OR we can just broadcast whatever we have.
+                # Actually, Server_Web proxies this, so we should broadcast AI + best-known vitals.
+                
+                # In the current architecture, Server_Pi_AI gets MQTT data.
+                # Let's update shared_state with MQTT data so the broadcaster can use it.
+                
+                fall_status, fall_conf = patient_state.get("fall", ("No person", 0.0))
+                emotion, emo_conf      = patient_state.get("emotion", ("neutral", 0.0))
+                
+                # Extract last vitals if we had them (this requires minor change in mqtt_listener)
+                vitals = patient_state.get("vitals", {"hr": 0, "spo2": 0, "temp": 0.0, "crit": 0})
+                hr, spo2, temp, crit = vitals["hr"], vitals["spo2"], vitals["temp"], vitals["crit"]
+                
+                sensors_connected = not (hr == 0 and spo2 == 0 and temp == 0)
+                stage         = predict_sleep_stage(sleep_model, sleep_scaler, spo2, hr, temp)
+                level, alerts = evaluate_criticality(hr, spo2, temp, stage, fall_status, emotion, crit)
+                patient_name  = next((c["name"] for c in PATIENT_CONFIGS if c["id"] == pid), f"Patient {pid}")
 
-    config = uvicorn.Config(app, host="0.0.0.0", port=8001, loop="none")
-    server = uvicorn.Server(config)
-    loop.run_until_complete(server.serve())
+                payload = {
+                    "patient_id":         pid,
+                    "patient_name":       patient_name,
+                    "hr":                 hr,
+                    "spo2":               spo2,
+                    "temp":               temp,
+                    "stage":              stage,
+                    "level":              level,
+                    "alerts":             alerts,
+                    "emotion":            emotion,
+                    "fall_status":        fall_status,
+                    "emotion_confidence": emo_conf,
+                    "fall_confidence":    fall_conf,
+                    "sensors_connected":  sensors_connected,
+                    "timestamp":          datetime.datetime.now().strftime("%H:%M:%S"),
+                }
+                await manager.broadcast(json.dumps(payload))
+        except Exception as e:
+            logging.error(f"[BROADCASTER] Error: {e}")
+        
+        await asyncio.sleep(1) # Broadcast every 1 second
+
+
+if __name__ == "__main__":
+    print("=== Patient Monitor — Raspberry Pi AI Server ===")
+    print(f"MQTT  : {MQTT_BROKER_HOST}:{MQTT_PORT}  topic: {MQTT_TOPIC_RAW}")
+    print("Ready : ws://0.0.0.0:8001/ws")
+    uvicorn.run(app, host="0.0.0.0", port=8001)

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Records & Analytics | Patient Monitor</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'background': '#0a1128',
+                        'card-bg': 'rgba(12, 18, 40, 0.7)',
+                        'sidebar-bg': '#070b1c',
+                        'accent-cyan': '#00e4ff',
+                        'critical-red': '#ff4d4d',
+                        'high-orange': '#ffaa00',
+                        'normal-green': '#00ff80',
+                        'sleep-deep': '#6a0dad',
+                        'sleep-light': '#00e4ff',
+                        'sleep-rem': '#00ff80',
+                        'sleep-awake': '#ffaa00',
+                        'sleep-error': '#777777',
+                    },
+                    keyframes: {
+                        pulseNeon: {
+                            '0%, 100%': { boxShadow: '0 0 5px #00e4ff, 0 0 0px #00e4ff' },
+                            '50%': { boxShadow: '0 0 10px #00e4ff, 0 0 20px #00e4ff' },
+                        },
+                        pulseCritical: {
+                            '0%, 100%': { boxShadow: '0 0 5px #ff4d4d, 0 0 0px #ff4d4d' },
+                            '50%': { boxShadow: '0 0 15px #ff4d4d, 0 0 25px #ff4d4d' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'neon-pulse': 'pulseNeon 3s ease-in-out infinite',
+                        'critical-pulse': 'pulseCritical 1s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+          background: radial-gradient(circle at top left, #020617, #0f172a);
+          color: #e2e8f0;
+          font-family: 'Inter', sans-serif;
+        }
+
+        .glass-card {
+            background-color: rgba(12, 18, 40, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
+            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .glass-card:hover {
+            transform: scale(1.01);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.6), 0 2px 5px rgba(0, 0, 0, 0.4);
+        }
+
+        .chart-container {
+            height: 200px;
+            min-height: 150px;
+            width: 100%;
+        }
+
+        /* Added for the new report chart */
+        .report-chart-container {
+            height: 300px;
+            min-height: 250px;
+            width: 100%;
+        }
+
+        .chart-container canvas, .report-chart-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        .sidebar-link-active {
+            background-color: #00e4ff20 !important;
+            border-left: 4px solid #00e4ff;
+            color: #00e4ff !important;
+            font-weight: bold;
+        }
+
+        .section-header {
+            border-bottom: 1px solid #1f2937;
+            padding-bottom: 0.5rem;
+            color: #e0e7ffcc;
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-left: 3px solid #00e4ff;
+            padding-left: 1rem;
+        }
+
+        /* Added for table scrollbar */
+        .table-container::-webkit-scrollbar { width: 4px; }
+        .table-container::-webkit-scrollbar-thumb { background-color: #00e4ff; border-radius: 10px; }
+        .table-container::-webkit-scrollbar-track { background-color: transparent; }
+    </style>
+</head>
+
+<body class="bg-background font-sans min-h-screen">
+
+    <nav class="fixed top-0 left-0 h-screen w-64 bg-sidebar-bg text-white/90 flex flex-col shadow-2xl border-r border-white/10 z-10">
+        <div class="p-6 text-center border-b border-white/10">
+            <h2 class="text-2xl font-thin tracking-widest text-white">MONITOR</h2>
+            <span class="text-xs text-accent-cyan">Real-Time Health System</span>
+        </div>
+
+        <ul class="flex-grow p-4 space-y-2">
+            <li>
+                <a href="/" class="flex items-center space-x-3 p-3 rounded-r-lg text-white/70 hover:bg-white/10 hover:text-white transition-colors duration-200 font-thin tracking-wider">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+                <a href="/records" class="flex items-center space-x-3 p-3 rounded-r-lg sidebar-link-active font-thin tracking-wider">
+                    <i data-lucide="database" class="w-5 h-5"></i>
+                    <span>Records</span>
+                </a>
+            </li>
+        </ul>
+
+        <div class="p-4 border-t border-white/10">
+             <form action="/logout" method="POST" class="mb-0">
+                <button
+                    type="submit"
+                    class="w-full flex items-center justify-center space-x-3 p-3 rounded-lg bg-critical-red/80 text-white font-semibold hover:bg-critical-red focus:outline-none focus:ring-2 focus:ring-critical-red/50 transition duration-200"
+                >
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    <span>LOGOUT</span>
+                </button>
+            </form>
+        </div>
+    </nav>
+
+    <div class="ml-64 p-4 lg:p-8">
+
+        <nav class="bg-gray-900 mb-6 px-6 py-4 rounded-xl text-sm flex justify-between items-center border border-white/10 shadow-lg">
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2">
+                    <span class="text-white/70">STATUS:</span>
+                    <span id="system-status" class="font-bold text-normal-green flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="5"/>
+                        </svg>
+                        ONLINE
+                    </span>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-6">
+                <div class="text-white/70 hidden lg:block">
+                    CURRENT TIME (UTC): <span id="utility-time" class="font-bold text-accent-cyan">--:--:--</span>
+                </div>
+            </div>
+        </nav>
+
+        <header class="text-center mb-8 max-w-7xl mx-auto">
+            <h1 class="text-3xl font-thin tracking-widest text-white">RECORDS & ANALYTICS</h1>
+        </header>
+
+        <main class="space-y-6">
+
+            <div id="kpi-cards" class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                </div>
+
+            <section class="glass-card p-6 rounded-xl">
+              <h2 class="section-header mb-4">Global Vital Trends</h2>
+              <div class="report-chart-container">
+                <canvas id="trendChart"></canvas>
+              </div>
+            </section>
+
+            <section class="glass-card p-6 rounded-xl">
+              <div class="flex justify-between items-center mb-4">
+                <h2 class="section-header">All Patient Records</h2>
+                <input id="searchInput" type="text" placeholder="Search..." class="p-2 bg-sidebar-bg border border-white/10 rounded-lg text-slate-200 w-64 focus:ring-2 focus:ring-accent-cyan focus:outline-none transition">
+              </div>
+              <div class="overflow-y-auto max-h-[500px] table-container">
+                <table class="min-w-full text-sm">
+                  <thead>
+                    <tr class="bg-sidebar-bg text-accent-cyan">
+                      <th class="p-3 text-left border-b border-white/10">Patient</th>
+                      <th class="p-3 text-left border-b border-white/10">Heart Rate</th>
+                      <th class="p-3 text-left border-b border-white/10">Oxygen</th>
+                      <th class="p-3 text-left border-b border-white/10">Temperature</th>
+                      <th class="p-3 text-left border-b border-white/10">Timestamp</th>
+                    </tr>
+                  </thead>
+                  <tbody id="recordsTable">
+                    </tbody>
+                </table>
+              </div>
+            </section>
+        </main>
+
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const kpiContainer = document.getElementById('kpi-cards');
+        const tableBody = document.getElementById('recordsTable');
+        const searchInput = document.getElementById('searchInput');
+        let allRecords = [];
+
+        // Function from index.html to update time
+        function updateUtilityTime() {
+            const timeEl = document.getElementById('utility-time');
+            if (timeEl) {
+                const now = new Date();
+                timeEl.innerText = now.toUTCString().split(' ')[4];
+            }
+        }
+
+        // Load all patient data from API
+        async function loadAllRecords() {
+          try {
+            const res = await fetch('/api/history_all');
+            if (!res.ok) {
+              console.error('Failed to fetch records');
+              tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-critical-red">Failed to load records.</td></tr>`;
+              return;
+            }
+            const data = await res.json();
+            allRecords = data.records || [];
+            if (allRecords.length === 0) {
+              tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-white/70">No records found.</td></tr>`;
+            } else {
+              renderTable(allRecords);
+            }
+            renderKPIs(allRecords);
+            renderChart(allRecords);
+          } catch (error) {
+            console.error('Error loading records:', error);
+            tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-critical-red">An error occurred.</td></tr>`;
+          }
+        }
+
+        // Render table (with updated styles)
+        function renderTable(records) {
+          tableBody.innerHTML = '';
+          records.forEach(r => {
+            const tr = document.createElement('tr');
+            // Use card-bg for hover, matching index.html theme
+            tr.classList.add('hover:bg-card-bg/50', 'transition-colors');
+            tr.innerHTML = `
+              <td class="p-3 border-b border-white/10">${r.patient_name || 'N/A'}</td>
+              <td class="p-3 border-b border-white/10 text-critical-red font-semibold">${r.heart_rate ?? '-'}</td>
+              <td class="p-3 border-b border-white/10 text-accent-cyan font-semibold">${r.oxygen ?? '-'}</td>
+              <td class="p-3 border-b border-white/10 text-[#0080ff] font-semibold">${r.temperature ? r.temperature.toFixed(1) : '-'}</td>
+              <td class="p-3 border-b border-white/10 text-slate-400">${r._server_timestamp ? new Date(r._server_timestamp).toLocaleString() : '-'}</td>
+            `;
+            tableBody.appendChild(tr);
+          });
+        }
+
+        // Render KPI Cards (with updated styles)
+        function renderKPIs(records) {
+          if (!records.length) {
+            kpiContainer.innerHTML = `
+              <div class="glass-card p-4 text-center rounded-xl">
+                <p class="text-slate-400 text-sm">Avg Heart Rate</p>
+                <p class="text-2xl font-bold text-critical-red">--</p>
+              </div>
+              <div class="glass-card p-4 text-center rounded-xl">
+                <p class="text-slate-400 text-sm">Avg Oxygen (%)</p>
+                <p class="text-2xl font-bold text-accent-cyan">--</p>
+              </div>
+              <div class="glass-card p-4 text-center rounded-xl">
+                <p class="text-slate-400 text-sm">Avg Temperature (°C)</p>
+                <p class="text-2xl font-bold text-[#0080ff]">--</p>
+              </div>
+            `;
+            return;
+          }
+          const validHR = records.map(r => r.heart_rate).filter(Boolean);
+          const validTemp = records.map(r => r.temperature).filter(Boolean);
+          const validO2 = records.map(r => r.oxygen).filter(Boolean);
+
+          const avgHR = Math.round(validHR.reduce((a, b) => a + b, 0) / validHR.length || 0);
+          const avgTemp = (validTemp.reduce((a, b) => a + b, 0) / validTemp.length || 0).toFixed(1);
+          const avgO2 = Math.round(validO2.reduce((a, b) => a + b, 0) / validO2.length || 0);
+
+          kpiContainer.innerHTML = `
+            <div class="glass-card p-4 text-center rounded-xl">
+              <p class="text-slate-400 text-sm">Avg Heart Rate</p>
+              <p class="text-2xl font-bold text-critical-red">${avgHR}</p>
+            </div>
+            <div class="glass-card p-4 text-center rounded-xl">
+              <p class="text-slate-400 text-sm">Avg Oxygen (%)</p>
+              <p class="text-2xl font-bold text-accent-cyan">${avgO2}</p>
+            </div>
+            <div class="glass-card p-4 text-center rounded-xl">
+              <p class="text-slate-400 text-sm">Avg Temperature (°C)</p>
+              <p class="text-2xl font-bold text-[#0080ff]">${avgTemp}</p>
+            </div>
+          `;
+        }
+
+        // Render Chart (with updated styles/colors)
+        function renderChart(records) {
+          const ctx = document.getElementById('trendChart').getContext('2d');
+          const sorted = records
+            .filter(r => r._server_timestamp)
+            .sort((a, b) => new Date(a._server_timestamp) - new Date(b._server_timestamp));
+
+          // Limit to last 100 records for performance
+          const sliced = sorted.slice(-100);
+
+          const timestamps = sliced.map(r => new Date(r._server_timestamp).toLocaleTimeString());
+          const heartRates = sliced.map(r => r.heart_rate);
+          const temps = sliced.map(r => r.temperature);
+          const oxygens = sliced.map(r => r.oxygen);
+
+          // Use colors from index.html theme
+          const hrColor = tailwind.config.theme.extend.colors['critical-red'];
+          const tempColor = '#0080ff'; // From index.html temp gauge
+          const o2Color = tailwind.config.theme.extend.colors['accent-cyan'];
+          const gridColor = 'rgba(255, 255, 255, 0.05)';
+          const textColor = '#e2e8f0';
+          const tickColor = '#94a3b8';
+
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: timestamps,
+              datasets: [
+                { label: 'Heart Rate', data: heartRates, borderColor: hrColor, backgroundColor: hrColor + '30', fill: false, tension: 0.3 },
+                { label: 'Temperature', data: temps, borderColor: tempColor, backgroundColor: tempColor + '30', fill: false, tension: 0.3 },
+                { label: 'Oxygen', data: oxygens, borderColor: o2Color, backgroundColor: o2Color + '30', fill: false, tension: 0.3 }
+              ]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { labels: { color: textColor } }
+              },
+              scales: {
+                x: {
+                  ticks: { color: tickColor, maxTicksLimit: 10 },
+                  grid: { color: gridColor }
+                },
+                y: {
+                  ticks: { color: tickColor },
+                  grid: { color: gridColor },
+                  beginAtZero: false,
+                  suggestedMin: 30,
+                  suggestedMax: 120
+                }
+              }
+            }
+          });
+        }
+
+        // Search functionality
+        searchInput.addEventListener('input', e => {
+          const q = e.target.value.toLowerCase();
+          const filtered = allRecords.filter(r =>
+            Object.values(r).some(v => String(v).toLowerCase().includes(q))
+          );
+          renderTable(filtered);
+        });
+
+        // Initial load
+        loadAllRecords();
+
+        // Start clock
+        updateUtilityTime();
+        setInterval(updateUtilityTime, 1000);
+      </script>
+</body>
+</html>

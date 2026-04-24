@@ -19,11 +19,13 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import aiomqtt
+import httpx
+from fastapi.responses import StreamingResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 # --- MQTT / ESP32 Configuration ---
-MQTT_BROKER_IP  = "localhost"   # Changed to localhost for local testing
+MQTT_BROKER_IP  = "localhost"   # Set to localhost for RPi deployment
 MQTT_PORT       = 1883
 MQTT_TOPIC_PROCESSED = "vitals/processed"
 
@@ -255,6 +257,26 @@ async def get_network_page(user_token: str = Depends(get_current_user)):
 async def get_records_page(user_token: str = Depends(get_current_user)):
     return FileResponse("HTML/history.html")
 
+
+@app.get("/api/video")
+async def video_proxy():
+    """Proxies MJPEG stream from AI Server (8001) to Dashboard."""
+    # We use localhost because both servers run on the Pi
+    PI_VIDEO_URL = "http://localhost:8001/video_feed"
+    
+    async def stream_generator():
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("GET", PI_VIDEO_URL) as r:
+                    async for chunk in r.aiter_bytes():
+                        yield chunk
+            except Exception as e:
+                logging.error(f"[VIDEO PROXY] Failed to connect to AI Server: {e}")
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 @app.get("/api/patients", response_model=List[PatientListItem])
 async def get_all_patients(user_token: str = Depends(get_current_user)):

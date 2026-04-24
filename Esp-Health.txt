@@ -14,8 +14,8 @@
 #include <ArduinoJson.h>
 
 // --- Configuration Storage ---
-char mqtt_server[40] = "192.168.0.102";
-char secondary_mqtt_server[40] = "10.0.0.5"; // *** Set to Pi's IP on Backup Network ***
+char mqtt_server[40] = "192.168.0.103";
+char secondary_mqtt_server[40] = "192.168.0.103"; 
 char patient_id[20] = "P001";
 char secondary_ssid[32] = "Theneth";
 char secondary_pass[32] = "qwertyuio";
