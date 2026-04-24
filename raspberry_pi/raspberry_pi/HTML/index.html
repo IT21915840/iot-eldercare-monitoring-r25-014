@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Monitor - AI Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        background: '#0a1128',
+                        'card-bg': 'rgba(12, 18, 40, 0.7)',
+                        'sidebar-bg': '#070b1c',
+                        'accent-cyan': '#00e4ff',
+                        'normal-green': '#00ff80',
+                        'critical-red': '#ff4d4d',
+                        'text-primary': '#e2e8f0',
+                        'text-secondary': '#94a3b8',
+                        'border-primary': 'rgba(255, 255, 255, 0.1)',
+                        'sleep-awake': '#ffaa00',
+                        'sleep-light': '#00e4ff',
+                        'sleep-deep': '#0080ff',
+                        'sleep-rem': '#6a0dad'
+                    },
+                    boxShadow: {
+                        'neon-cyan': '0 0 15px rgba(0, 228, 255, 0.4)',
+                        'critical-pulse': '0 0 20px rgba(255, 77, 77, 0.6)',
+                    },
+                    keyframes: {
+                        pulseNeon: {
+                            '0%, 100%': { boxShadow: '0 0 15px rgba(0, 228, 255, 0.4)' },
+                            '50%': { boxShadow: '0 0 25px rgba(0, 228, 255, 0.7)' },
+                        },
+                        pulseCritical: {
+                            '0%, 100%': { transform: 'scale(1)', boxShadow: '0 0 20px rgba(255, 77, 77, 0.6)' },
+                            '50%': { transform: 'scale(1.05)', boxShadow: '0 0 30px rgba(255, 77, 77, 0.9)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    },
+                    animation: {
+                        'neon-pulse': 'pulseNeon 3s ease-in-out infinite',
+                        'critical-pulse': 'pulseCritical 1s ease-in-out infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        /* ADDED: CSS Variables for Light/Dark Mode */
+        :root {
+            /* Light Mode Defaults */
+            --color-bg: #f1f5f9; /* slate-100 */
+            --color-card-bg: rgba(255, 255, 255, 0.7);
+            --color-sidebar-bg: #e2e8f0; /* slate-200 */
+            --color-text-primary: #0f172a; /* slate-900 */
+            --color-text-secondary: #475569; /* slate-600 */
+            --color-border-primary: rgba(0, 0, 0, 0.1);
+        }
+
+        html.dark {
+            /* Dark Mode Overrides */
+            --color-bg: #0a1128; /* Original 'background' */
+            --color-card-bg: rgba(12, 18, 40, 0.7); /* Original 'card-bg' */
+            --color-sidebar-bg: #070b1c; /* Original 'sidebar-bg' */
+            --color-text-primary: #e2e8f0; /* slate-200 */
+            --color-text-secondary: #94a3b8; /* slate-400 */
+            --color-border-primary: rgba(255, 255, 255, 0.1);
+        }
+        /* MODIFIED: body to use CSS variables */
+        body {
+          /* background: radial-gradient(circle at top left, #020617, #0f172a); */ /* Replaced with solid color for easy toggling */
+          background-color: var(--color-bg);
+          color: var(--color-text-primary);
+          font-family: 'Inter', sans-serif;
+          transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* MODIFIED: .glass-card to use CSS variables */
+        .glass-card {
+            background-color: var(--color-card-bg);
+            border: 1px solid var(--color-border-primary);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08); /* Softened shadow for light mode */
+            backdrop-filter: blur(5px);
+            transition: transform 0.25s ease-in-out, box-shadow 0.25s ease-in-out;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .glass-card:hover {
+            transform: scale(1.01);
+            box-shadow: 0 6px 10px rgba(0, 0, 0, 0.12), 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-container { height: 200px; min-height: 150px; width: 100%; }
+        .pie-chart-container { height: 220px; min-height: 200px; width: 100%; position: relative; }
+        .chart-container canvas, .pie-chart-container canvas { width: 100% !important; height: 100% !important; display: block; }
+
+        .gauge-base {
+            width: 80px; height: 80px; border-radius: 50%;
+            background: conic-gradient(var(--gauge-color) calc(var(--gauge-value) * 1%), rgba(128, 128, 128, 0.1) 0%); /* MODIFIED: lighter fallback */
+            display: flex; align-items: center; justify-content: center; position: relative;
+        }
+
+        /* MODIFIED: .gauge-inner to use CSS variable */
+        .gauge-inner {
+            width: 85%; height: 85%;
+            background-color: var(--color-bg); /* Use theme background */
+            border-radius: 50%; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; line-height: 1;
+        }
+
+        /* MODIFIED: scrollbar to be dark-mode specific */
+        html.dark #incidents-container::-webkit-scrollbar { width: 4px; }
+        html.dark #incidents-container::-webkit-scrollbar-thumb { background-color: #00e4ff; border-radius: 10px; }
+        html.dark #incidents-container::-webkit-scrollbar-track { background-color: transparent; }
+
+        .sidebar-link-active {
+            background-color: #00e4ff20 !important;
+            border-left: 4px solid #00e4ff;
+            color: #00e4ff !important;
+            font-weight: bold;
+        }
+
+        /* MODIFIED: .section-header to use CSS variable */
+        .section-header {
+            border-bottom: 1px solid var(--color-border-primary);
+            padding-bottom: 0.5rem;
+            color: var(--color-text-secondary);
+            font-size: 1.125rem;
+            font-weight: 600;
+            border-left: 3px solid #00e4ff;
+            padding-left: 1rem;
+        }
+    </style>
+</head>
+
+<body class="bg-background font-sans min-h-screen">
+
+    <nav class="fixed top-0 left-0 h-screen w-64 bg-sidebar-bg text-text-primary flex flex-col shadow-2xl border-r border-border-primary z-10">
+        <div class="p-6 text-center border-b border-border-primary">
+            <h2 class="text-2xl font-thin tracking-widest text-text-primary">MONITOR</h2>
+            <span class="text-xs text-accent-cyan">Real-Time Health System</span>
+        </div>
+
+        <ul class="flex-grow p-4 space-y-2">
+            <li>
+                <a href="/" class="flex items-center space-x-3 p-3 rounded-r-lg sidebar-link-active font-thin tracking-wider">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+                    <span>Dashboard</span>
+                </a>
+            </li>
+            <li>
+            <a href="/records" class="flex items-center space-x-3 p-3 rounded-r-lg text-text-secondary hover:bg-black/5 dark:hover:bg-white/10 hover:text-text-primary transition-colors duration-200 font-thin tracking-wider">
+                <i data-lucide="database" class="w-5 h-5"></i>
+                <span>Records</span>
+            </a>
+            </li>
+        </ul>
+
+        <div class="p-4 border-t border-border-primary">
+             <form action="/logout" method="POST" class="mb-0">
+                <button
+                    type="submit"
+                    class="w-full flex items-center justify-center space-x-3 p-3 rounded-lg bg-critical-red/80 text-white font-semibold hover:bg-critical-red focus:outline-none focus:ring-2 focus:ring-critical-red/50 transition duration-200"
+                >
+                    <i data-lucide="log-out" class="w-5 h-5"></i>
+                    <span>LOGOUT</span>
+                </button>
+            </form>
+        </div>
+    </nav>
+
+    <div class="ml-64 p-4 lg:p-8">
+
+        <nav class="bg-card-bg mb-6 px-6 py-4 rounded-xl text-sm flex justify-between items-center border border-border-primary shadow-lg relative overflow-hidden">
+            <!-- SENSOR DISCONNECTED BANNER -->
+            <div id="sensor-disconnection-banner" class="absolute inset-0 bg-red-600/90 text-white flex items-center justify-center font-bold text-base transform translate-y-full transition-transform duration-500 z-20">
+                <i data-lucide="unplug" class="w-5 h-5 mr-3 animate-pulse"></i>
+                SENSOR DISCONNECTED — PLEASE CHECK ESP32
+            </div>
+
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-2">
+                    <span class="text-text-secondary">STATUS:</span>
+                    <span id="system-status" class="font-bold text-normal-green flex items-center">
+                        <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="5"/>
+                        </svg>
+                        ONLINE
+                    </span>
+                </div>
+                <div class="text-text-secondary hidden md:block">
+                    |
+                </div>
+                <div class="text-text-secondary hidden md:block">
+                    <span class="text-critical-red">URGENT ALERTS: <span id="urgent-alert-count">0</span></span>
+                </div>
+            </div>
+
+            <div class="flex items-center space-x-6">
+                <div class="text-text-secondary hidden lg:block">
+                    CURRENT TIME (UTC): <span id="utility-time" class="font-bold text-accent-cyan">--:--:--</span>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <i data-lucide="sun" class="w-5 h-5 text-text-secondary"></i>
+                    <label for="theme-toggle" class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="theme-toggle" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-400 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-accent-cyan"></div>
+                    </label>
+                    <i data-lucide="moon" class="w-5 h-5 text-text-secondary"></i>
+                </div>
+            </div>
+        </nav>
+
+        <header class="text-center mb-8 max-w-7xl mx-auto">
+            <h1 class="text-3xl font-thin tracking-widest text-text-primary">PATIENT MONITORING SYSTEM</h1>
+            <div class="mt-4 text-xl font-medium">
+                <span id="patient-name" class="text-accent-cyan tracking-wider">Loading Patient Data...</span>
+                <span id="patient-id" class="text-text-secondary ml-4">ID: ---</span>
+            </div>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch min-h-0">
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+                <h2 class="section-header">HEALTH OVERVIEW</h2>
+
+                <div class="glass-card p-6 rounded-xl grid grid-cols-3 gap-4 text-center">
+                    <div class="flex flex-col items-center">
+                        <div id="hr-gauge-base" class="gauge-base mb-2" style="--gauge-color: var(--normal-green); --gauge-value: 70;">
+                            <div class="gauge-inner">
+                                <span id="hr-value" class="text-lg font-bold text-normal-green">--</span>
+                            </div>
+                        </div>
+                        <span class="text-sm text-text-secondary">HEART RATE</span>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div id="temp-gauge-base" class="gauge-base mb-2" style="--gauge-color: #0080ff; --gauge-value: 50;">
+                            <div class="gauge-inner">
+                                <span id="temp-value" class="text-lg font-bold text-[#0080ff]">--</span>
+                            </div>
+                        </div>
+                        <span class="text-sm text-text-secondary">TEMP (°C)</span>
+                    </div>
+                    <div class="flex flex-col items-center">
+                        <div id="spo2-gauge-base" class="gauge-base mb-2" style="--gauge-color: var(--accent-cyan); --gauge-value: 98;">
+                            <div class="gauge-inner">
+                                <span id="spo2-value" class="text-lg font-bold text-accent-cyan">--</span>
+                            </div>
+                        </div>
+                        <span class="text-sm text-text-secondary">OXYGEN (%)</span>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl grid grid-cols-2 gap-6">
+                    <div id="fall-kpi-card" class="text-center p-3 rounded-lg border border-border-primary transition duration-300 transform hover:scale-[1.05]">
+                        <div id="fall-icon" class="text-3xl text-critical-red mb-1">
+                            <i data-lucide="bell-ring" class="w-8 h-8 mx-auto"></i>
+                        </div>
+                        <span class="text-sm text-text-secondary block">FALL STATUS</span>
+                        <div id="fall-value-kpi" class="text-xl font-bold mt-1 text-accent-cyan">--</div>
+                    </div>
+                    <div id="emotion-kpi-card" class="text-center p-3 rounded-lg border border-border-primary transition duration-300 transform hover:scale-[1.05]">
+                        <div id="emotion-icon" class="text-3xl text-normal-green mb-1">
+                            <i data-lucide="smile" class="w-8 h-8 mx-auto"></i>
+                        </div>
+                        <span class="text-sm text-text-secondary block">EMOTION (AI)</span>
+                        <div id="emotion-value-kpi" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-4">NETWORK HEALTH</h3>
+                    <div class="grid grid-cols-2 gap-6">
+                        <div class="text-center p-3 rounded-lg border border-border-primary">
+                            <div id="pi-link-icon" class="text-3xl text-normal-green mb-1">
+                                <i data-lucide="server" class="w-8 h-8 mx-auto"></i>
+                            </div>
+                            <span class="text-sm text-text-secondary block">PI GATEWAY</span>
+                            <div id="pi-last-seen-s" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                        </div>
+                        <div class="text-center p-3 rounded-lg border border-border-primary">
+                            <div id="mongo-link-icon" class="text-3xl text-normal-green mb-1">
+                                <i data-lucide="database" class="w-8 h-8 mx-auto"></i>
+                            </div>
+                            <span class="text-sm text-text-secondary block">DATABASE PING</span>
+                            <div id="mongo-ping-ms" class="text-xl font-bold mt-1 text-normal-green">--</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">VITAL TRENDS (HR & SpO2)</h3>
+                    <div class="chart-container">
+                        <canvas id="vitalsTrendChart"></canvas>
+                    </div>
+                </div>
+
+            </section>
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+                <h2 class="section-header">SLEEP MONITORING</h2>
+
+                <div class="glass-card p-6 rounded-xl text-center">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">CURRENT SLEEP STAGE</h3>
+                    <div id="stage-gauge-base" class="gauge-base mx-auto mb-4" style="--gauge-color: #6a0dad; --gauge-value: 80; width: 140px; height: 140px;">
+                        <div class="gauge-inner w-[85%] h-[85%]">
+                            <span id="stage-value" class="text-xl font-bold text-purple-400">--</span>
+                        </div>
+                    </div>
+                    <div class="flex justify-between text-sm text-text-secondary pt-2 border-t border-border-primary">
+                        <span>Fall Asleep: --</span>
+                        <span>Wake Up: --</span>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">SLEEP STAGE ANALYSIS</h3>
+                    <div class="pie-chart-container">
+                        <canvas id="sleepAnalysisChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-accent-cyan mb-3">HR VARIABILITY (WAVE)</h3>
+                    <div class="chart-container">
+                        <canvas id="sleepWaveChart"></canvas>
+                    </div>
+                </div>
+
+            </section>
+
+            <section class="col-span-1 space-y-6 flex flex-col min-h-0">
+                <h2 class="section-header">LIVE WATCH (AI)</h2>
+                
+                <div class="glass-card p-2 rounded-xl overflow-hidden aspect-video relative bg-black">
+                    <img id="camera-feed" src="/api/video" alt="Live Camera Feed" class="w-full h-full object-cover">
+                    <div class="absolute top-2 left-2 bg-red-600 text-white text-[10px] px-2 py-0.5 rounded font-bold animate-pulse">LIVE</div>
+                    <div id="no-camera-msg" class="absolute inset-0 flex items-center justify-center text-text-secondary text-sm hidden">
+                        <div class="text-center">
+                            <i data-lucide="camera-off" class="w-12 h-12 mx-auto mb-2 opacity-20"></i>
+                            <p>Camera feed unavailable</p>
+                        </div>
+                    </div>
+                </div>
+
+                <h2 class="section-header">ACCIDENT & FALL LOG</h2>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <h3 class="text-base font-semibold text-text-secondary mb-3">RECENT INCIDENTS</h3>
+                    <div id="incidents-container" class="space-y-3 flex-grow overflow-y-auto min-h-0 h-48">
+                        <p class="text-text-secondary text-sm">Waiting for real-time events...</p>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-xl flex-grow flex flex-col">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-base font-semibold text-text-secondary">CAMERA CAPTURES</h3>
+                        <button id="refresh-captures-btn" class="text-accent-cyan hover:text-white transition-colors duration-200">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <div id="captures-container" class="grid grid-cols-2 gap-2 overflow-y-auto min-h-0 h-48">
+                        <p class="text-text-secondary text-xs col-span-2 text-center py-4">No captures found.</p>
+                    </div>
+                </div>
+
+                <div class="text-center flex-shrink-0">
+                    <button id="emergency-alert-btn" class="px-6 py-4 rounded-xl font-bold text-lg bg-critical-red text-white w-full shadow-2xl shadow-red-900 transition duration-300 transform hover:scale-[1.03] focus:outline-none focus:ring-4 focus:ring-critical-red/50">
+                        EMERGENCY ALERT
+                    </button>
+                </div>
+            </section>
+
+        </main>
+
+    </div>
+
+    <script>
+        const MAX_DATA_POINTS = 50;
+        const HISTORY_DATA = { hr: [], spo2: [], time: [] };
+        let urgentAlerts = 0;
+
+        // Chart variables
+        let vitalsTrendChart, sleepWaveChart, sleepAnalysisChart;
+
+        const SLEEP_ANALYSIS_DATA = {
+            'Awake': 0, 'Light': 0, 'Deep': 0, 'REM': 0, 'Error': 0
+        };
+        const SLEEP_CHART_COLORS = [
+            '#ffaa00', '#00e4ff', '#0080ff', '#6a0dad', '#ffaa00'
+        ];
+
+        const COLOR_MAP = {
+            'CRITICAL': { main: '#ff4d4d', dark: 'rgba(255, 77, 77, 0.1)', neon: 'shadow-red-900', level: 100 },
+            'HIGH': { main: '#ffaa00', dark: 'rgba(255, 170, 0, 0.1)', neon: 'shadow-orange-900', level: 75 },
+            'MODERATE': { main: '#00e4ff', dark: 'rgba(0, 228, 255, 0.1)', neon: 'shadow-cyan-900', level: 50 },
+            'NORMAL': { main: '#00ff80', dark: 'rgba(0, 255, 128, 0.1)', neon: 'shadow-green-900', level: 25 },
+        };
+        const GAUGES = {
+            'hr': { max: 150, color: COLOR_MAP.NORMAL.main, base: 'hr-gauge-base', value: 'hr-value' },
+            'spo2': { max: 100, color: COLOR_MAP.MODERATE.main, base: 'spo2-gauge-base', value: 'spo2-value' },
+            'temp': { max: 40, color: '#0080ff', base: 'temp-gauge-base', value: 'temp-value' }
+        };
+
+        let lastChartUpdate = 0;
+        const CHART_THROTTLE_MS = 150;
+
+        function getCssVar(varName) {
+            return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        }
+
+        function updateChartTheme() {
+            if (!vitalsTrendChart || !sleepWaveChart || !sleepAnalysisChart) return;
+
+            const textPrimary = getCssVar('--color-text-primary');
+            const textSecondary = getCssVar('--color-text-secondary');
+            const borderPrimary = getCssVar('--color-border-primary');
+            const colorBg = getCssVar('--color-bg');
+
+            vitalsTrendChart.options.plugins.legend.labels.color = textPrimary;
+            vitalsTrendChart.options.scales.x.ticks.color = textSecondary;
+            vitalsTrendChart.options.scales.x.grid.color = borderPrimary;
+            vitalsTrendChart.options.scales.y.grid.color = borderPrimary;
+
+            sleepWaveChart.options.scales.x.grid.color = borderPrimary;
+            sleepWaveChart.options.scales.y.ticks.color = textPrimary;
+            sleepWaveChart.options.scales.y.grid.color = borderPrimary;
+
+            sleepAnalysisChart.options.plugins.legend.labels.color = textPrimary;
+            sleepAnalysisChart.data.datasets[0].borderColor = colorBg;
+
+            vitalsTrendChart.update('none');
+            sleepWaveChart.update('none');
+            sleepAnalysisChart.update('none');
+        }
+
+        const trendCtx = document.getElementById('vitalsTrendChart').getContext('2d');
+        vitalsTrendChart = new Chart(trendCtx, {
+            type: 'line',
+            data: {
+                labels: [], datasets: [
+                    { label: 'HR (BPM)', data: [], borderColor: COLOR_MAP.NORMAL.main, backgroundColor: COLOR_MAP.NORMAL.dark, fill: true, tension: 0.4, borderWidth: 2, pointRadius: 2, yAxisID: 'y' },
+                    { label: 'SpO2 (%)', data: [], borderColor: COLOR_MAP.MODERATE.main, backgroundColor: 'transparent', fill: false, tension: 0.4, borderWidth: 2, pointRadius: 2, yAxisID: 'y1' }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+                plugins: { legend: { display: true, labels: { color: '#e2e8f0' } } },
+                scales: {
+                    x: {
+                        ticks: { color: '#94a3b8', maxRotation: 0, minRotation: 0, autoSkip: true, maxTicksLimit: 8 },
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                    },
+                    y: { type: 'linear', position: 'left', suggestedMin: 50, suggestedMax: 100, ticks: { color: COLOR_MAP.NORMAL.main }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                    y1: { type: 'linear', position: 'right', suggestedMin: 85, suggestedMax: 100, ticks: { color: COLOR_MAP.MODERATE.main }, grid: { drawOnChartArea: false } }
+                }
+            }
+        });
+
+        const waveCtx = document.getElementById('sleepWaveChart').getContext('2d');
+        sleepWaveChart = new Chart(waveCtx, {
+            type: 'line',
+            data: { labels: [], datasets: [{
+                label: 'HR Fluctuation', data: [], borderColor: '#6a0dad', backgroundColor: 'rgba(106, 13, 173, 0.1)', fill: true, tension: 0.6, borderWidth: 3, pointRadius: 0
+            }]},
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 100 },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { display: false }, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                    y: { suggestedMin: 60, suggestedMax: 100, ticks: { color: '#e2e8f0' }, grid: { color: 'rgba(255, 255, 255, 0.1)' } }
+                }
+            }
+        });
+
+        const analysisCtx = document.getElementById('sleepAnalysisChart').getContext('2d');
+        sleepAnalysisChart = new Chart(analysisCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(SLEEP_ANALYSIS_DATA),
+                datasets: [{
+                    label: 'Sleep Stages',
+                    data: Object.values(SLEEP_ANALYSIS_DATA),
+                    backgroundColor: SLEEP_CHART_COLORS,
+                    borderColor: 'rgba(12, 18, 40, 0.7)',
+                    borderWidth: 2,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 500 },
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#e2e8f0', boxWidth: 20 } },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                let value = context.raw || 0;
+                                const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+                                return `${label}: ${percentage}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const wsUrl = `${proto}//${host}/ws`;
+        let ws;
+
+        function connect() {
+            ws = new WebSocket(wsUrl);
+            ws.onopen = () => {
+                addAlert("System Ready. Connected to Monitor Hub.", "NORMAL");
+                document.getElementById('system-status').innerText = 'ONLINE';
+                document.getElementById('system-status').classList.add('text-normal-green');
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+                updateChartTheme();
+                refreshCaptures();
+            };
+            ws.onclose = () => {
+                addAlert("Connection Lost. Reconnecting...", "CRITICAL");
+                document.getElementById('system-status').innerText = 'OFFLINE';
+                document.getElementById('system-status').classList.add('text-critical-red');
+                setTimeout(connect, 3000);
+            };
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'system_health') {
+                    updateNetworkHealth(data);
+                } else {
+                    handlePatientData(data);
+                }
+            };
+        }
+
+        function handlePatientData(data) {
+            const level = data.level.toUpperCase();
+            document.getElementById('patient-name').innerText = data.patient_name;
+            document.getElementById('patient-id').innerText = `ID: ${data.patient_id}`;
+
+            const connected = data.sensors_connected !== false;
+            const banner = document.getElementById('sensor-disconnection-banner');
+            const healthSection = document.querySelector('section:first-of-type');
+            
+            if (!connected) {
+                banner.classList.remove('translate-y-full');
+                if (healthSection) healthSection.classList.add('opacity-40', 'grayscale-[0.5]');
+                updateGauge('hr', 'N/A', level, 0);
+                updateGauge('spo2', 'N/A', level, 0);
+                updateGauge('temp', 'N/A', level, 0);
+            } else {
+                banner.classList.add('translate-y-full');
+                if (healthSection) healthSection.classList.remove('opacity-40', 'grayscale-[0.5]');
+                updateGauge('hr', data.hr, level);
+                updateGauge('spo2', data.spo2, level);
+                updateGauge('temp', data.temp.toFixed(1), level);
+            }
+            
+            updateAIStatus(data, level);
+
+            if (level !== "NORMAL" || data.fall_status.toLowerCase().includes('fall')) {
+                addAlert(data.alerts, level, data.fall_status);
+                if (connected && (level === 'CRITICAL' || level === 'HIGH')) {
+                    urgentAlerts++;
+                    document.getElementById('urgent-alert-count').innerText = urgentAlerts;
+                }
+            }
+            if (connected) {
+                updateCharts(data.timestamp, data.hr, data.spo2);
+            }
+        }
+
+        function updateNetworkHealth(data) {
+            const piValEl = document.getElementById('pi-last-seen-s');
+            const mongoValEl = document.getElementById('mongo-ping-ms');
+            piValEl.innerText = data.pi_last_seen_s ? parseFloat(data.pi_last_seen_s).toFixed(1) + 's' : '---';
+            mongoValEl.innerText = data.mongo_ping_ms ? data.mongo_ping_ms + 'ms' : '---';
+        }
+
+        function updateGauge(key, value, level, forcedPercentage = null) {
+            const config = GAUGES[key];
+            const gaugeEl = document.getElementById(config.base);
+            const valueEl = document.getElementById(config.value);
+            
+            let percentage;
+            if (forcedPercentage !== null) {
+                percentage = forcedPercentage;
+            } else {
+                percentage = (key === 'temp') ? ((value - 30) / (40 - 30)) * 100 : (value / config.max) * 100;
+            }
+            
+            percentage = Math.max(0, Math.min(100, percentage));
+            let color = (value === 'N/A') ? '#475569' : COLOR_MAP[level].main;
+            
+            gaugeEl.style.setProperty('--gauge-color', color);
+            gaugeEl.style.setProperty('--gauge-value', percentage);
+            
+            if (value === 'N/A') {
+                valueEl.innerText = "OFF";
+                valueEl.style.color = '#475569';
+            } else {
+                valueEl.innerText = value + (key === 'spo2' ? '%' : '');
+                valueEl.style.color = color;
+            }
+        }
+
+        function updateAIStatus(data, overallLevel) {
+            document.getElementById('stage-value').innerText = data.stage;
+            const fallValueEl = document.getElementById('fall-value-kpi');
+            const fallStatus = data.fall_status.toUpperCase();
+            const isFalling = fallStatus.includes('FALL');
+            fallValueEl.innerText = isFalling ? 'FALL DETECTED' : fallStatus.replace('CONTINUOUS ', '');
+            fallValueEl.style.color = isFalling ? COLOR_MAP.CRITICAL.main : COLOR_MAP.NORMAL.main;
+
+            const emotionValueEl = document.getElementById('emotion-value-kpi');
+            emotionValueEl.innerText = data.emotion.toUpperCase();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            
+            if (isFalling) refreshCaptures();
+        }
+
+        function addAlert(message, level, fallStatus = 'None') {
+            const container = document.getElementById('incidents-container');
+            const placeholder = container.querySelector('p');
+            if (placeholder) placeholder.remove();
+            
+            const alertDiv = document.createElement('div');
+            const isUrgent = (level === 'CRITICAL' || level === 'HIGH' || fallStatus.toLowerCase().includes('fall'));
+            alertDiv.className = `p-4 rounded-lg text-sm bg-card-bg border ${isUrgent ? 'border-critical-red animate-pulse' : 'border-border-primary'}`;
+            alertDiv.innerHTML = `<div class="font-bold text-text-primary text-xs">${new Date().toLocaleTimeString()} - ${message}</div>`;
+            container.prepend(alertDiv);
+            if (container.children.length > 10) container.removeChild(container.lastChild);
+        }
+
+        async function refreshCaptures() {
+            const container = document.getElementById('captures-container');
+            try {
+                const response = await fetch('/api/captures');
+                const data = await response.json();
+                if (data.captures && data.captures.length > 0) {
+                    container.innerHTML = '';
+                    data.captures.slice(0, 8).forEach(filename => {
+                        const card = document.createElement('div');
+                        card.className = 'relative group bg-black/20 rounded border border-white/10 overflow-hidden';
+                        const timeStr = filename.split('_')[2]?.match(/.{2}/g).join(':') || '--:--';
+                        card.innerHTML = `
+                            <img src="/captures/${filename}" class="w-full h-24 object-cover cursor-pointer hover:opacity-80" onclick="window.open('/captures/${filename}', '_blank')">
+                            <div class="absolute bottom-0 left-0 right-0 bg-black/60 text-[10px] p-1 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <span>${timeStr}</span>
+                                <button onclick="deleteCapture('${filename}')" class="text-red-400 hover:text-white">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                    if (typeof lucide !== 'undefined') lucide.createIcons();
+                } else {
+                    container.innerHTML = '<p class="text-text-secondary text-xs col-span-2 text-center py-4">No captures found.</p>';
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        async function deleteCapture(filename) {
+            if (!confirm(`Delete capture ${filename}?`)) return;
+            try {
+                const res = await fetch(`/api/captures/${filename}`, { method: 'DELETE' });
+                if (res.ok) { refreshCaptures(); addAlert(`Deleted capture ${filename}`, "NORMAL"); }
+            } catch (err) { console.error(err); }
+        }
+
+        function updateCharts(timestamp, hr, spo2) {
+            const t = timestamp || new Date().toLocaleTimeString();
+            HISTORY_DATA.time.push(t);
+            HISTORY_DATA.hr.push(hr);
+            HISTORY_DATA.spo2.push(spo2);
+            if (HISTORY_DATA.time.length > MAX_DATA_POINTS) for (const k in HISTORY_DATA) HISTORY_DATA[k].shift();
+            
+            const now = Date.now();
+            if (now - lastChartUpdate > CHART_THROTTLE_MS) {
+                vitalsTrendChart.data.labels = HISTORY_DATA.time;
+                vitalsTrendChart.data.datasets[0].data = HISTORY_DATA.hr;
+                vitalsTrendChart.data.datasets[1].data = HISTORY_DATA.spo2;
+                vitalsTrendChart.update('none');
+                lastChartUpdate = now;
+            }
+        }
+
+        function updateUtilityTime() {
+            const el = document.getElementById('utility-time');
+            if (el) el.innerText = new Date().toUTCString().split(' ')[4];
+        }
+
+        const themeToggle = document.getElementById('theme-toggle');
+        function applyTheme() {
+            const dark = localStorage.getItem('theme') === 'dark';
+            document.documentElement.classList.toggle('dark', dark);
+            themeToggle.checked = dark;
+            updateChartTheme();
+        }
+        themeToggle.addEventListener('change', () => {
+            const dark = themeToggle.checked;
+            localStorage.setItem('theme', dark ? 'dark' : 'light');
+            applyTheme();
+        });
+
+        document.getElementById('refresh-captures-btn').onclick = refreshCaptures;
+        
+        // Manual fall trigger via keypress 'f'
+        window.addEventListener('keydown', async (e) => {
+            if (e.key === 'f' || e.key === 'F') {
+                try {
+                    await fetch('/api/trigger_fall', { method: 'POST' });
+                } catch (err) {
+                    console.error('Failed to trigger manual fall:', err);
+                }
+            }
+        });
+
+        setInterval(updateUtilityTime, 1000);
+        applyTheme();
+        connect();
+    </script>
+</body>
+</html>
