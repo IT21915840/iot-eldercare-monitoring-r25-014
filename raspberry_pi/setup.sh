@@ -69,7 +69,9 @@ pip install \
     scikit-learn \
     opencv-python-headless \
     tensorflow \
-    numpy
+    numpy \
+    RPi.GPIO \
+    reportlab
 
 deactivate
 

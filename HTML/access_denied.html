@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Access Denied | Patient Monitoring System</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/HTML/style.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': 'var(--bg-primary)',
+                        'accent-primary': 'var(--accent-primary)',
+                        'text-primary': 'var(--text-primary)',
+                        'text-secondary': 'var(--text-secondary)',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-primary text-text-primary flex items-center justify-center min-h-screen p-4 overflow-hidden relative transition-colors duration-300">
+    
+    <!-- Theme Toggle -->
+    <button id="theme-toggle" class="absolute top-6 right-8 p-3 rounded-full bg-black/5 dark:bg-white/10 text-text-secondary hover:text-accent-primary transition-colors focus:outline-none z-20 hover-glow">
+        <i data-lucide="sun" id="theme-icon" class="w-5 h-5"></i>
+    </button>
+
+    <!-- Background Glow -->
+    <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-500/10 blur-[120px] rounded-full"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-orange-500/10 blur-[120px] rounded-full"></div>
+
+    <!-- Denied Card -->
+    <div class="glass-panel w-full max-w-md p-10 rounded-3xl shadow-2xl animate-fade-in relative z-10 border border-white/5 text-center">
+        
+        <div class="flex justify-center mb-6">
+            <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-red-500 to-orange-600 flex items-center justify-center shadow-lg shadow-red-500/20">
+                <i data-lucide="shield-off" class="text-white w-10 h-10"></i>
+            </div>
+        </div>
+
+        <h2 class="text-3xl font-extrabold tracking-tight text-text-primary font-outfit mb-4">
+            Access Denied
+        </h2>
+        
+        <p class="text-text-secondary font-medium mb-6">
+            Your current IP address is not whitelisted for access to this portal. 
+        </p>
+
+        <div class="bg-red-500/10 border border-red-500/20 rounded-xl p-4 mb-8 text-red-400 text-sm font-medium flex items-center justify-center space-x-2">
+            <i data-lucide="info" class="w-5 h-5 flex-shrink-0"></i>
+            <span>Please contact the System Administrator to authorize your IP.</span>
+        </div>
+
+        <a href="/login" class="inline-block w-full bg-gradient-to-r from-red-500 to-orange-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300">
+            RETURN TO LOGIN
+        </a>
+    </div>
+
+    <script>
+        /* Theme logic */
+        const themeToggle = document.getElementById('theme-toggle');
+        function updateThemeIcon() {
+            const isDark = document.documentElement.classList.contains('dark');
+            themeToggle.innerHTML = isDark ? '<i data-lucide="moon" id="theme-icon" class="w-5 h-5"></i>' : '<i data-lucide="sun" id="theme-icon" class="w-5 h-5"></i>';
+            lucide.createIcons();
+        }
+        function applyTheme() {
+            if (localStorage.getItem('theme') === 'light') {
+                document.documentElement.classList.remove('dark');
+            } else {
+                document.documentElement.classList.add('dark');
+            }
+            updateThemeIcon();
+        }
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                if (document.documentElement.classList.contains('dark')) {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                } else {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                }
+                updateThemeIcon();
+            });
+        }
+        applyTheme();
+    </script>
+</body>
+</html>

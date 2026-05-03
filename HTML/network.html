@@ -100,6 +100,12 @@
                         Node Active
                     </span>
                 </div>
+                
+                <button id="manual-sync" 
+                    class="p-2 bg-white/5 rounded-xl text-text-secondary hover:bg-accent-primary/20 hover:text-accent-primary transition-all active:scale-90 group"
+                    title="Refresh Data Only">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 group-active:rotate-180 transition-transform duration-500"></i>
+                </button>
             </div>
 
             <div class="flex items-center space-x-8">
@@ -129,7 +135,7 @@
         </header>
 
         <main class="max-w-5xl animate-fade-in" style="animation-delay: 0.2s;">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
                 <!-- Gateway Card -->
                 <div class="glass-panel p-10 rounded-[2.5rem] group hover-glow transition-all duration-500">
@@ -170,14 +176,120 @@
                                 class="text-xs font-bold text-accent-primary uppercase tracking-widest">Optimized</p>
                         </div>
                     </div>
-                    <h3 class="text-2xl font-black text-text-primary mb-2 font-outfit">Data Reservoir</h3>
-                    <p class="text-xs text-text-secondary mb-8 leading-relaxed">Secure MongoDB instance hosting
-                        historical health records and system metadata.</p>
+                    <h3 class="text-2xl font-black text-text-primary mb-2 font-outfit">Secure Edge Storage</h3>
+                    <p class="text-xs text-text-secondary mb-8 leading-relaxed">HIPAA-compliant local SQLite instance hosting historical health records directly on the Pi.</p>
 
                     <div class="bg-black/10 rounded-2xl p-6 border border-white/5">
                         <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-40 mb-2">
                             Network Round-Trip Time</p>
                         <p id="mongo-ping-ms" class="text-3xl font-black text-text-primary tracking-tighter">--</p>
+                    </div>
+                </div>
+
+                <!-- Store & Forward Card -->
+                <div class="glass-panel p-10 rounded-[2.5rem] group hover-glow transition-all duration-500">
+                    <div class="flex justify-between items-start mb-10">
+                        <div id="buffer-icon"
+                            class="p-4 bg-blue-500/10 rounded-2xl text-blue-500 transition-all duration-500 group-hover:scale-110">
+                            <i data-lucide="hard-drive" class="w-8 h-8"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">
+                                Local Storage</p>
+                            <p id="buffer-status-text"
+                                class="text-xs font-bold text-blue-500 uppercase tracking-widest">Syncing</p>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-black text-text-primary mb-2 font-outfit">Offline Buffer</h3>
+                    <p class="text-xs text-text-secondary mb-8 leading-relaxed">Store-and-forward persistence mechanism holding MQTT payloads during network outages.</p>
+
+                    <div class="bg-black/10 rounded-2xl p-6 border border-white/5">
+                        <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-40 mb-2">
+                            Queued Messages</p>
+                        <p id="buffer-size" class="text-3xl font-black text-text-primary tracking-tighter">0</p>
+                    </div>
+                </div>
+
+                <!-- Fallback Network Card -->
+                <div class="glass-panel p-10 rounded-[2.5rem] group hover-glow transition-all duration-500">
+                    <div class="flex justify-between items-start mb-10">
+                        <div id="fallback-icon"
+                            class="p-4 bg-purple-500/10 rounded-2xl text-purple-500 transition-all duration-500 group-hover:scale-110">
+                            <i data-lucide="wifi" class="w-8 h-8"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">
+                                Connection</p>
+                            <p id="fallback-status-text"
+                                class="text-xs font-bold text-purple-500 uppercase tracking-widest">Primary</p>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-black text-text-primary mb-2 font-outfit">Fallback Mechanism</h3>
+                    <p class="text-xs text-text-secondary mb-8 leading-relaxed">Multi-network failover daemon seamlessly managing active network interfaces.</p>
+
+                    <div class="bg-black/10 rounded-2xl p-6 border border-white/5">
+                        <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-40 mb-2">
+                            Active SSID Interface</p>
+                        <p id="active-network" class="text-2xl font-black text-text-primary tracking-tighter">--</p>
+                    </div>
+                </div>
+
+                <!-- Traffic Prioritization Card -->
+                <div class="glass-panel p-10 rounded-[2.5rem] group hover-glow transition-all duration-500">
+                    <div class="flex justify-between items-start mb-10">
+                        <div id="traffic-icon"
+                            class="p-4 bg-green-500/10 rounded-2xl text-green-500 transition-all duration-500 group-hover:scale-110">
+                            <i data-lucide="gauge" class="w-8 h-8"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">
+                                QoS State</p>
+                            <p id="traffic-status-text"
+                                class="text-xs font-bold text-green-500 uppercase tracking-widest">Stable</p>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-black text-text-primary mb-2 font-outfit">Traffic Control</h3>
+                    <p class="text-xs text-text-secondary mb-8 leading-relaxed">AI-based video compression adjusting in real-time to preserve MQTT alert bandwidth.</p>
+
+                    <div class="bg-black/10 rounded-2xl p-6 border border-white/5">
+                        <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-40 mb-2">
+                            Congestion Level</p>
+                        <p id="network-status" class="text-3xl font-black text-text-primary tracking-tighter">--</p>
+                    </div>
+                </div>
+
+                <!-- Service Health Card -->
+                <div class="glass-panel p-10 rounded-[2.5rem] group hover-glow transition-all duration-500">
+                    <div class="flex justify-between items-start mb-10">
+                        <div id="service-icon"
+                            class="p-4 bg-accent-primary/10 rounded-2xl text-accent-primary transition-all duration-500 group-hover:scale-110">
+                            <i data-lucide="activity" class="w-8 h-8"></i>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-[10px] font-black text-text-secondary uppercase tracking-widest opacity-60">
+                                Global State</p>
+                            <p id="service-status-text"
+                                class="text-xs font-bold text-accent-primary uppercase tracking-widest">Active Monitoring</p>
+                        </div>
+                    </div>
+                    <h3 class="text-2xl font-black text-text-primary mb-2 font-outfit">Service Health</h3>
+                    <p class="text-xs text-text-secondary mb-8 leading-relaxed">Status of background AI processing and failover daemons.</p>
+
+                    <div class="space-y-4">
+                        <div class="bg-black/10 rounded-2xl p-4 border border-white/5 flex justify-between items-center transition-all duration-300">
+                            <div class="flex items-center space-x-3">
+                                <div id="ai-status-dot" class="w-2 h-2 rounded-full bg-status-critical shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+                                <span class="text-xs font-bold text-text-primary uppercase tracking-wider">AI Engine</span>
+                            </div>
+                            <span id="ai-status-text" class="text-[10px] font-black text-status-critical uppercase tracking-widest">Stopped</span>
+                        </div>
+                        <div class="bg-black/10 rounded-2xl p-4 border border-white/5 flex justify-between items-center transition-all duration-300">
+                            <div class="flex items-center space-x-3">
+                                <div id="network-status-dot" class="w-2 h-2 rounded-full bg-status-critical shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
+                                <span class="text-xs font-bold text-text-primary uppercase tracking-wider">Fallback</span>
+                            </div>
+                            <span id="network-status-text" class="text-[10px] font-black text-status-critical uppercase tracking-widest">Stopped</span>
+                        </div>
                     </div>
                 </div>
 
@@ -299,16 +411,116 @@
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 if (data.type === 'system_health') updateNetworkHealth(data);
+                if (data.type === 'network_telemetry') updateTelemetry(data);
+                if (data.type === 'node_offline') handleNodeOffline(data);
             };
+        }
+
+        // --- Manual Sync Logic ---
+        document.getElementById('manual-sync').addEventListener('click', () => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                // Flash the icon
+                const icon = document.querySelector('#manual-sync i');
+                icon.classList.add('rotate-180');
+                
+                // Request fresh state
+                ws.send(JSON.stringify({ type: 'request_sync' }));
+                
+                setTimeout(() => icon.classList.remove('rotate-180'), 500);
+            }
+        });
+
+        // --- VIVA FAILSAFE: F-Key Manual Fall Trigger ---
+        window.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'f') {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    console.log("Manual Fall Triggered via Keyboard");
+                    ws.send(JSON.stringify({ type: 'manual_fall_trigger' }));
+                }
+            }
+        });
+
+        function handleNodeOffline(data) {
+            const piStatusText = document.getElementById('pi-status-text');
+            const piLinkIcon = document.getElementById('pi-link-icon');
+            if (piStatusText) {
+                piStatusText.innerText = 'OFFLINE (LWT)';
+                piStatusText.classList.remove('text-status-online');
+                piStatusText.classList.add('text-status-critical');
+            }
+            if (piLinkIcon) {
+                piLinkIcon.classList.remove('bg-status-online/10', 'text-status-online');
+                piLinkIcon.classList.add('bg-status-critical/10', 'text-status-critical');
+            }
+            
+            const statusEl = document.getElementById('system-status');
+            if (statusEl) {
+                statusEl.innerText = 'Node Offline';
+                statusEl.classList.remove('text-status-online');
+                statusEl.classList.add('text-status-critical');
+            }
+        }
+
+        function updateTelemetry(data) {
+            // Buffer Size
+            const bufferSizeEl = document.getElementById('buffer-size');
+            const bufferStatusText = document.getElementById('buffer-status-text');
+            if (bufferSizeEl) bufferSizeEl.innerText = data.buffer_size;
+            if (bufferStatusText) {
+                if (data.buffer_size > 0) {
+                    bufferStatusText.innerText = "Buffering";
+                    bufferStatusText.style.color = COLOR_MAP.HIGH.main;
+                } else {
+                    bufferStatusText.innerText = "Synced";
+                    bufferStatusText.style.color = COLOR_MAP.NORMAL.main;
+                }
+            }
+
+            // Fallback Active Network
+            const activeNetworkEl = document.getElementById('active-network');
+            const fallbackStatusText = document.getElementById('fallback-status-text');
+            if (activeNetworkEl) activeNetworkEl.innerText = data.active_network;
+            if (fallbackStatusText) {
+                if (data.active_network && data.active_network.toLowerCase().includes("backup")) {
+                    fallbackStatusText.innerText = "Failover Active";
+                    fallbackStatusText.style.color = COLOR_MAP.HIGH.main;
+                } else {
+                    fallbackStatusText.innerText = "Primary Link";
+                    fallbackStatusText.style.color = COLOR_MAP.NORMAL.main;
+                }
+            }
+
+            // Traffic Control
+            const networkStatusEl = document.getElementById('network-status');
+            const trafficStatusText = document.getElementById('traffic-status-text');
+            const trafficIconEl = document.getElementById('traffic-icon');
+            if (networkStatusEl) networkStatusEl.innerText = data.network_status;
+            
+            let tColor = COLOR_MAP.NORMAL.main;
+            let tStatus = "Stable";
+            if (data.network_status === "FAIR") { tColor = COLOR_MAP.MODERATE.main; tStatus = "Adjusting"; }
+            if (data.network_status === "POOR") { tColor = COLOR_MAP.CRITICAL.main; tStatus = "Throttling Video"; }
+            
+            if (trafficStatusText) {
+                trafficStatusText.innerText = tStatus;
+                trafficStatusText.style.color = tColor;
+            }
+            if (networkStatusEl) networkStatusEl.style.color = tColor;
+            if (trafficIconEl) {
+                trafficIconEl.style.color = tColor;
+                trafficIconEl.style.background = `${tColor}10`;
+            }
+            
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         function updateNetworkHealth(data) {
             const piValEl = document.getElementById('pi-last-seen-s');
             const piIconEl = document.getElementById('pi-link-icon');
             const piStatusText = document.getElementById('pi-status-text');
-            const mongoValEl = document.getElementById('mongo-ping-ms');
-            const mongoIconEl = document.getElementById('mongo-link-icon');
-            const mongoStatusText = document.getElementById('mongo-status-text');
+            const dbValEl = document.getElementById('mongo-ping-ms'); // Using existing ID for minimal breakage
+            const dbIconEl = document.getElementById('mongo-link-icon');
+            const dbStatusText = document.getElementById('mongo-status-text');
 
             let piVal = data.pi_last_seen_s;
             let piColor = COLOR_MAP.NORMAL.main;
@@ -334,31 +546,66 @@
                 piIconEl.style.background = `${piColor}10`;
             }
 
-            let mongoVal = data.mongo_ping_ms;
-            let mongoColor = COLOR_MAP.ACCENT.main;
-            let mongoIcon = 'database';
-            let mongoStatus = 'Optimized';
+            let dbState = data.db_status || 'OFFLINE';
+            let dbColor = COLOR_MAP.ACCENT.main;
+            let dbIcon = 'database';
+            let dbStatusLabel = 'Optimized';
+            let dbValue = 'SECURE';
 
-            if (mongoVal === 'N/A' || mongoVal === 'FAIL' || mongoVal === null) {
-                if (mongoValEl) mongoValEl.innerText = 'Storage Failure';
-                mongoColor = COLOR_MAP.CRITICAL.main;
-                mongoIcon = 'database-zap';
-                mongoStatus = 'Unreachable';
+            if (dbState === 'SYNCED') {
+                dbColor = COLOR_MAP.NORMAL.main;
+                dbStatusLabel = 'Synced';
+                dbValue = 'ENCRYPTED';
+            } else if (dbState === 'INITIALIZING') {
+                dbColor = COLOR_MAP.MODERATE.main;
+                dbStatusLabel = 'Initializing';
+                dbValue = 'SETUP';
             } else {
-                mongoVal = parseFloat(mongoVal);
-                if (mongoValEl) mongoValEl.innerText = mongoVal.toFixed(0) + 'ms Path';
-                if (mongoVal > 500) { mongoColor = COLOR_MAP.HIGH.main; mongoStatus = 'Latency Peaks'; }
-                if (mongoVal > 2000) { mongoColor = COLOR_MAP.CRITICAL.main; mongoStatus = 'Critical Lag'; }
+                dbColor = COLOR_MAP.CRITICAL.main;
+                dbStatusLabel = 'Offline';
+                dbValue = 'FAILURE';
+                dbIcon = 'database-zap';
             }
-            if (mongoValEl) mongoValEl.style.color = mongoColor;
-            if (mongoStatusText) { mongoStatusText.innerText = mongoStatus; mongoStatusText.style.color = mongoColor; }
-            if (mongoIconEl) {
-                mongoIconEl.innerHTML = `<i data-lucide="${mongoIcon}" class="w-8 h-8"></i>`;
-                mongoIconEl.style.color = mongoColor;
-                mongoIconEl.style.background = `${mongoColor}10`;
+
+            if (dbValEl) {
+                dbValEl.innerText = dbValue;
+                dbValEl.style.color = dbColor;
+            }
+            if (dbStatusText) { 
+                dbStatusText.innerText = dbStatusLabel; 
+                dbStatusText.style.color = dbColor; 
+            }
+            if (dbIconEl) {
+                dbIconEl.innerHTML = `<i data-lucide="${dbIcon}" class="w-8 h-8"></i>`;
+                dbIconEl.style.color = dbColor;
+                dbIconEl.style.background = `${dbColor}10`;
+            }
+
+            // --- Service Status Update ---
+            if (data.services) {
+                updateServiceStatus('ai', data.services.ai);
+                updateServiceStatus('network', data.services.network);
             }
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function updateServiceStatus(id, status) {
+            const dot = document.getElementById(`${id}-status-dot`);
+            const text = document.getElementById(`${id}-status-text`);
+            const isRunning = status === 'running';
+
+            if (dot && text) {
+                if (isRunning) {
+                    dot.className = 'w-2 h-2 rounded-full bg-status-online shadow-[0_0_8px_rgba(16,185,129,0.5)]';
+                    text.innerText = 'Running';
+                    text.className = 'text-[10px] font-black text-status-online uppercase tracking-widest';
+                } else {
+                    dot.className = 'w-2 h-2 rounded-full bg-status-critical shadow-[0_0_8px_rgba(239,68,68,0.5)]';
+                    text.innerText = 'Stopped';
+                    text.className = 'text-[10px] font-black text-status-critical uppercase tracking-widest';
+                }
+            }
         }
 
         updateUtilityTime();

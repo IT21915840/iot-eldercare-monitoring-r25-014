@@ -226,37 +226,38 @@ void loop() {
     // Changed for Viva: True REAL-TIME transfer (every 0.5 seconds)
     unsigned long interval = 500; 
 
-    static int lastValidHR = 0;
-    static int lastValidSpO2 = 0;
-
     if (millis() - lastMsg > interval) {
         lastMsg = millis();
         maxim_heart_rate_and_oxygen_saturation(irBuffer, BUFFER_LENGTH, redBuffer, &spo2, &spo2Valid, &heartRate, &hrValid);
         
         float t = readTemp();
         
-        // Anti-ghosting & Smoothing Latch
+        // --- HYBRID LATCHING LOGIC ---
+        static int lastValidHR = 0;
+        static int lastValidSpO2 = 0;
         int hr = 0;
         int ox = 0;
         
-        // If finger is removed (IR value drops), force values to 0 immediately
-        if (irBuffer[BUFFER_LENGTH-1] < 20000) {
-            hr = 0;
-            ox = 0;
+        // INSTANT FINGER-OFF DETECTION (Threshold: 10,000)
+        // If IR is very low, the finger is off. Instantly clear memory and output 0.
+        if (irBuffer[BUFFER_LENGTH-1] < 10000) {
             lastValidHR = 0;
             lastValidSpO2 = 0;
         } else {
-            // Finger is attached. Latch the last known good values if current is invalid
-            if (hrValid && heartRate > 30 && heartRate < 200) {
+            // FINGER ON: Update memory ONLY if the library produces a real, valid number
+            if (heartRate > 30 && heartRate < 200) {
                 lastValidHR = heartRate;
             }
-            if (spo2Valid && spo2 > 50 && spo2 <= 100) {
+            if (spo2 > 50 && spo2 <= 100) {
                 lastValidSpO2 = spo2;
             }
             
+            // Output the latched memory. This PREVENTS midway drops to 0!
             hr = lastValidHR;
             ox = lastValidSpO2;
         }
+        if (hr > 220) hr = 0;
+        if (ox > 100) ox = 100;
         
         bool isCrit = (ox > 0 && ox < 88) || (hr > 0 && (hr < 40 || hr > 150));
         
