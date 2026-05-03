@@ -260,4 +260,16 @@ if __name__ == "__main__":
     print("=== Patient Monitor — Web Dashboard Server ===")
     print(f"Pi AI Source : {PI_WEBSOCKET_URI}")
     print(f"Dashboard    : http://0.0.0.0:{LOCAL_PORT}/")
+    
+    # Initialize Ngrok for Client Remote Access
+    try:
+        from pyngrok import ngrok
+        NGROK_AUTHTOKEN = "3CtB0KrffE2eAfx4bw85wmpPD6K_HDUCJLts8kn4irjJLqPD"
+        if NGROK_AUTHTOKEN:
+            ngrok.set_auth_token(NGROK_AUTHTOKEN)
+            public_url = ngrok.connect(LOCAL_PORT, domain="aghast-dizziness-providing.ngrok-free.dev").public_url
+            print(f"[NGROK] Tunnel established! Public URL: {public_url}")
+    except Exception as e:
+        print(f"[NGROK] Failed to start Ngrok tunnel: {e}")
+
     uvicorn.run(app, host="0.0.0.0", port=LOCAL_PORT)

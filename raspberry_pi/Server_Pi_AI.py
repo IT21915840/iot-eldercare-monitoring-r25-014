@@ -22,6 +22,70 @@ import uvicorn
 import aiomqtt
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
+import sqlite3
+import subprocess
+import aiofiles
+
+try:
+    import RPi.GPIO as GPIO
+    GPIO_AVAILABLE = True
+except ImportError:
+    GPIO_AVAILABLE = False
+    logging.warning("RPi.GPIO not available. Hardware buzzer will be mocked (ideal for Windows/testing).")
+
+# Hardware Configuration
+BUZZER_PIN = 18
+
+if GPIO_AVAILABLE:
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(BUZZER_PIN, GPIO.OUT)
+    GPIO.output(BUZZER_PIN, GPIO.LOW)
+
+# ── Store and Forward DB Setup ────────────────────────────────────────────────
+DB_NAME = "offline_buffer.db"
+def init_db():
+    try:
+        with sqlite3.connect(DB_NAME) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS offline_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    topic TEXT,
+                    payload TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Failed to initialize offline DB: {e}")
+
+# --- Local Keyboard Trigger for Viva ---
+import termios
+import tty
+def handle_local_keypress():
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        char = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+    if char.lower() == 'f':
+        logging.info("[VIVA] LOCAL FALL TRIGGER DETECTED (Pi Keyboard)!")
+        for pid in shared_state:
+            shared_state[pid]["manual_fall_active"] = True
+            shared_state[pid]["fall_alert"] = True
+            shared_state[pid]["fall"] = ("FALL DETECTED", 100.0)
+            if GPIO_AVAILABLE:
+                GPIO.output(BUZZER_PIN, GPIO.HIGH)
+                # Auto-reset after 5 seconds
+                threading.Timer(5.0, lambda: GPIO.output(BUZZER_PIN, GPIO.LOW)).start()
+
+init_db()
+
+NETWORK_STATUS = "EXCELLENT"
+ACTIVE_NETWORK = "Primary WiFi"
 
 # ── AI backend: TensorFlow (.h5) → tflite-runtime (.tflite) → disabled ───────
 import os
@@ -56,11 +120,11 @@ warnings.filterwarnings("ignore", category=InconsistentVersionWarning, module="s
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-MQTT_BROKER_HOST = "localhost"
+MQTT_BROKER_HOST = "broker.hivemq.com"
 MQTT_PORT        = 1883
-MQTT_TOPIC_RAW   = "vitals/raw"
-MQTT_TOPIC_PROCESSED = "vitals/processed"
-MQTT_TOPIC_STATUS = "vitals/status"
+MQTT_TOPIC_RAW   = "r25_014/vitals/raw"
+MQTT_TOPIC_PROCESSED = "r25_014/vitals/processed"
+MQTT_TOPIC_STATUS = "r25_014/vitals/status"
 
 PATIENT_CONFIGS = [
     {"id": "P001", "name": "Patient Fernando"}
@@ -88,25 +152,15 @@ SharedState = Dict[str, Dict[str, Any]]
 def load_vision_model(h5_path: str, tflite_path: str):
     """Returns (model_object, mode) where mode is 'keras' or 'tflite'."""
     if KERAS_AVAILABLE and tf is not None:
-        import os
         if os.path.exists(h5_path):
             try:
-                class CustomDepthwiseConv2D(tf.keras.layers.DepthwiseConv2D):
-                    def __init__(self, **kwargs):
-                        kwargs.pop('groups', None)
-                        super().__init__(**kwargs)
-
-                model = tf.keras.models.load_model(
-                    h5_path, 
-                    custom_objects={'DepthwiseConv2D': CustomDepthwiseConv2D}, 
-                    compile=False
-                )
+                model = tf.keras.models.load_model(h5_path, compile=False)
                 logging.info(f"Keras model loaded: {h5_path}")
                 return model, "keras"
             except Exception as e:
                 logging.warning(f"Keras load failed for {h5_path}: {e}")
+
     if TFLITE_AVAILABLE and TFLiteInterpreter is not None:
-        import os
         if os.path.exists(tflite_path):
             try:
                 interp = TFLiteInterpreter(model_path=tflite_path)
@@ -115,7 +169,8 @@ def load_vision_model(h5_path: str, tflite_path: str):
                 return interp, "tflite"
             except Exception as e:
                 logging.warning(f"TFLite load failed for {tflite_path}: {e}")
-    logging.warning(f"No model available at {h5_path} or {tflite_path}")
+    
+    logging.error(f"FATAL: All model loading attempts failed for {h5_path}")
     return None, None
 
 
@@ -184,30 +239,48 @@ def predict_emotion(face_roi: np.ndarray, model, mode: str) -> Tuple[str, float]
 
 def predict_fall(frame: np.ndarray, hog, model, mode: str, labels, fallback_detected: bool = False) -> Tuple[str, float]:
     try:
-        # Evaluate HOG with strict confidence weight to reject background noise (curtains, chairs)
-        (boxes, weights) = hog.detectMultiScale(frame, winStride=(4, 4), padding=(8, 8), scale=1.05)
-        valid_pedestrians = 0
+        # Evaluate HOG with more sensitive scale to find people in unusual (fallen) positions
+        (boxes, weights) = hog.detectMultiScale(frame, winStride=(8, 8), padding=(16, 16), scale=1.03)
+        best_box = None
+        best_weight = 0.0
+        
         if len(boxes) > 0 and len(weights) > 0:
-            for w in weights:
-                if (isinstance(w, (list, np.ndarray)) and w[0] > 0.4) or (isinstance(w, float) and w > 0.4):
-                    valid_pedestrians += 1
+            for (x, y, w, h), weight in zip(boxes, weights):
+                w_val = weight[0] if isinstance(weight, (list, np.ndarray)) else weight
+                if w_val > 0.4 and w_val > best_weight:
+                    best_weight = w_val
+                    best_box = (x, y, w, h)
                     
-        # If no strong physical person is boxed by HOG and no face fallback exists, it's an empty room
-        if valid_pedestrians == 0 and not fallback_detected:
-            return "No person", 0.0
-            
         if model is None or labels is None:
             return "Unknown", 0.0
             
-        # Neural pipeline requires RGB format, whereas OpenCV uses BGR natively. Color warping causes hallucinations.
+        # Neural pipeline requires RGB format, whereas OpenCV uses BGR natively.
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        resized = cv2.resize(rgb_frame, (224, 224)).astype(np.float32)
+        
+        # ISOLATE HUMAN FIGURE (Crop using HOG bounding box) to eliminate background noise
+        if best_box is not None:
+            (x, y, w, h) = best_box
+            # Add a small margin to the bounding box
+            margin = int(0.1 * max(w, h))
+            x1 = max(0, x - margin)
+            y1 = max(0, y - margin)
+            x2 = min(frame.shape[1], x + w + margin)
+            y2 = min(frame.shape[0], y + h + margin)
+            person_crop = rgb_frame[y1:y2, x1:x2]
+        else:
+            person_crop = rgb_frame # Fallback if only face was detected but no HOG body
+            
+        resized = cv2.resize(person_crop, (224, 224)).astype(np.float32)
         arr     = ((resized / 127.5) - 1.0).reshape(1, 224, 224, 3)
         pred    = run_vision_inference(model, mode, arr)
         
         if pred.size == 0:
             return "No person", 0.0
             
+        idx = int(np.argmax(pred[0]))
+        raw_label = labels[idx] if idx < len(labels) else "Unknown"
+        conf = float(pred[0][idx] * 100)
+        
         idx = int(np.argmax(pred[0]))
         raw_label = labels[idx] if idx < len(labels) else "Unknown"
         conf = float(pred[0][idx] * 100)
@@ -228,11 +301,33 @@ def predict_fall(frame: np.ndarray, hog, model, mode: str, labels, fallback_dete
 
 def predict_sleep_stage(model, scaler, spo2: int, hr: int, temp: float) -> str:
     try:
+        # 1. Hardware/Sensor Disconnect Guard
+        if hr == 0 or spo2 == 0:
+            return "Awake"
+            
+        # 2. Physiological Absolute Overrides (Overrides AI Model)
+        # If heart rate is very high, it is physiologically impossible to be in Deep sleep.
+        if hr > 85:
+            return "Awake"
+            
         if model is None or scaler is None:
             return "Awake"
+            
+        # 3. AI Model Prediction
         features = pd.DataFrame([[spo2, hr, temp]], columns=["spo2", "hr", "temp"])
-        return str(model.predict(scaler.transform(features))[0])
-    except Exception:
+        prediction = str(model.predict(scaler.transform(features))[0])
+        
+        # 4. AI Guardrails & Remapping (Correcting Model Bias)
+        if prediction == "Deep" and hr > 75:
+            return "Light" # Corrects biased models that predict Deep despite elevated HR
+            
+        # The AI model sometimes outputs "Warm-up" or "Warmup" for uncertain data.
+        # We remap this to "Awake" so the dashboard doesn't get stuck showing "Analyzing..."
+        if "warm" in prediction.lower():
+            return "Awake"
+            
+        return prediction
+    except Exception as e:
         return "Awake"
 
 
@@ -242,16 +337,19 @@ def evaluate_criticality(hr, spo2, temp, stage, fall_status, emotion, esp_crit) 
         alerts.append("SENSOR CRITICAL THRESHOLD"); level = "Critical"
     if isinstance(fall_status, str) and "fall" in fall_status.lower():
         alerts.append("AI FALL DETECTED"); level = "Critical"
-    if hr > 100:
-        alerts.append(f"Abnormal Heart Rate: Too High ({hr} BPM)")
-        if level != "Critical": level = "High"
-    elif hr < 55:
-        alerts.append(f"Abnormal Heart Rate: Too Low ({hr} BPM)")
-        if level != "Critical": level = "High"
         
-    if spo2 < 90:
-        alerts.append(f"Warning: Low SpO2 ({spo2}%)")
-        if level != "Critical": level = "High"
+    if hr > 0:
+        if hr > 100:
+            alerts.append(f"Abnormal Heart Rate: Too High ({hr} BPM)")
+            if level != "Critical": level = "High"
+        elif hr < 55:
+            alerts.append(f"Abnormal Heart Rate: Too Low ({hr} BPM)")
+            if level != "Critical": level = "High"
+            
+    if spo2 > 0:
+        if spo2 < 90:
+            alerts.append(f"Warning: Low SpO2 ({spo2}%)")
+            if level != "Critical": level = "High"
     if emotion in ["anger", "fear", "sadness"] and level == "Normal":
         alerts.append(f"Negative Emotion: {emotion}"); level = "Moderate"
     if temp > 38.5:
@@ -291,10 +389,8 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-shared_state: SharedState = {
-    cfg["id"]: {"fall": ("No person", 0.0), "emotion": ("neutral", 0.0), "fall_alert": False}
-    for cfg in PATIENT_CONFIGS
-}
+shared_state = { cfg["id"]: {"fall": ("No person", 0.0), "emotion": ("neutral", 0.0), "fall_alert": False, "manual_fall_active": False} for cfg in PATIENT_CONFIGS }
+manual_override_until = 0
 
 # ── Global Frame Buffer for Streaming ──────────────────────────────────────────
 current_frame: Optional[np.ndarray] = None
@@ -322,11 +418,22 @@ async def generate_mjpeg():
             break
         frame = get_drawing_frame()
         if frame is not None:
-            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            # Dynamic compression based on NETWORK_STATUS
+            global NETWORK_STATUS
+            quality = 70
+            sleep_time = 0.1 # 10 FPS
+            if NETWORK_STATUS == "FAIR":
+                quality = 50
+                sleep_time = 0.2 # 5 FPS
+            elif NETWORK_STATUS == "POOR":
+                quality = 30
+                sleep_time = 0.5 # 2 FPS
+
+            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, quality])
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
-        await asyncio.sleep(0.1) # ~10 FPS is plenty for MJPEG monitoring
+        await asyncio.sleep(sleep_time)
 
 
 # ── Camera thread ─────────────────────────────────────────────────────────────
@@ -354,16 +461,23 @@ def webcam_loop(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels)
     CAMERA_ACTIVE = True
 
     # --- Motion Detection setup ---
-    fgbg = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=50, detectShadows=False)
-    MOTION_FALL_THRESHOLD = 20000  # Adjust based on camera height
+    fgbg = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=False)
+    MOTION_FALL_THRESHOLD = 5000  # Lowered from 20000 for better sensitivity
 
     fall_counter = 0
     miss_counter = 0
     MISS_THRESHOLD = 5  # Reduced from 20 for much snappier 'No Person' transitions
+    fall_start_time = None
+    manual_override_until = 0
     
     while True:
         ret, frame = cap.read()
-        if not ret: break
+        if not ret: 
+            logging.warning("Webcam frame lost. Attempting to reconnect...")
+            cap.release()
+            time.sleep(2)
+            cap = cv2.VideoCapture(0) # Re-init
+            continue
 
         gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         # Verify face pipeline for strong presence weighting
@@ -379,33 +493,63 @@ def webcam_loop(emotion_model, emotion_mode, fall_model, fall_mode, fall_labels)
         bottom_half = fgmask[height//2:, :]
         motion_count = cv2.countNonZero(bottom_half)
         
-        is_falling_ai = "fall" in str(fall_status).lower() and fall_conf >= 70.0
+        is_falling_ai = "fall" in str(fall_status).lower() and fall_conf >= 35.0
         is_falling_motion = motion_count > MOTION_FALL_THRESHOLD
         
-        # Consolidate status
-        if is_falling_motion and not is_falling_ai:
+        # Smart Consolidation
+        if is_falling_ai and is_falling_motion:
+            fall_status = "FALL DETECTED (High Conf)"
+            is_falling = True
+        elif is_falling_ai:
+            fall_status = "POTENTIAL FALL (Low Conf)"
+            is_falling = True
+        elif is_falling_motion:
             fall_status = "Motion Fall detected"
-            fall_conf = 100.0
-            logging.info(f"[MOTION] Falling object detected: {motion_count}px")
-        
-        if "No person" in fall_status:
-            miss_counter += 1
-            if miss_counter < MISS_THRESHOLD:
-                fall_status = "Normal"
-                fall_conf = 0.0
+            is_falling = True
         else:
-            miss_counter = 0
+            if "No person" in fall_status:
+                fall_status = "Normal"
+            is_falling = False
 
-        if "fall" in str(fall_status).lower():
-            # Cap counter to swiftly recover to normal upon standing
-            fall_counter = min(12, fall_counter + 1)
-        elif "No person" not in fall_status:
-            fall_counter = max(0, fall_counter - 1)
-        
         state = shared_state.get(pid, {})
-        state["fall_alert"] = fall_counter >= 8
-        if state["fall_alert"]:
-            fall_status = "Continuous Fall"
+        
+        # --- NEW: Manual Override Logic ---
+        if time.time() < manual_override_until:
+            is_falling = True
+            fall_status = "A FALL HAS OCCURED (Manual)"
+        elif state.get("manual_fall_active"):
+            # Triggered from MQTT listener
+            manual_override_until = time.time() + 8.0
+            state["manual_fall_active"] = False # Reset flag
+            is_falling = True
+            fall_status = "A FALL HAS OCCURED (Manual)"
+
+        if is_falling:
+            if fall_start_time is None:
+                fall_start_time = time.time()
+            
+            elapsed = time.time() - fall_start_time
+            if elapsed >= 2.0: # Reduced to 2 seconds for better responsiveness
+                if "fall" in str(fall_status).lower():
+                    state["fall_alert"] = True
+                    # TRIGGER HARDWARE BUZZER (GPIO)
+                    fall_status = "FALL DETECTED"
+                else:
+                    state["fall_alert"] = False
+        else:
+            fall_start_time = None
+            state["fall_alert"] = False
+
+        # 4. Handle Hardware Buzzer based on Fall Status
+        if GPIO_AVAILABLE:
+            # Check if a fall is detected by AI OR if a Manual Fall is active
+            is_ai_fall = "fall" in str(fall_status).lower()
+            is_manual_fall = any(state.get("manual_fall_active", False) for state in shared_state.values())
+            
+            if is_ai_fall or is_manual_fall or (time.time() < manual_override_until):
+                GPIO.output(BUZZER_PIN, GPIO.HIGH)
+            else:
+                GPIO.output(BUZZER_PIN, GPIO.LOW)
 
         # 5. Emotion Detection
         if face_detected:
@@ -450,16 +594,31 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
                         spo2 = int(raw.get("spo2", 0))
                         temp = float(raw.get("temp", 0.0))
                         crit = int(raw.get("crit",  0))
+                        manual_trigger = raw.get("manual_fall", False)
 
                         # Hybrid Logic: Use provided stage (e.g. from Mock/Sensor) if available, otherwise predict via AI
                         stage = raw.get("stage")
                         if not stage or stage == "Warmup":
                             stage = predict_sleep_stage(sleep_model, sleep_scaler, spo2, hr, temp)
                         patient_state = shared_state.get(pid, shared_state[PATIENT_CONFIGS[0]["id"]])
+                        
+                        # Handle Manual Viva Trigger
+                        if manual_trigger:
+                            global manual_override_until
+                            logging.info("[VIVA] MANUAL FALL TRIGGER ACTIVATED via Keyboard!")
+                            patient_state["manual_fall_active"] = True 
+                            patient_state["fall_alert"] = True
+                            patient_state["fall"] = ("FALL DETECTED", 100.0)
+                            manual_override_until = time.time() + 5.0 # Lock buzzer ON for 5s
+                            if GPIO_AVAILABLE:
+                                GPIO.output(BUZZER_PIN, GPIO.HIGH)
+                                # Failsafe: Ensure state resets after 5 seconds
+                                threading.Timer(5.0, lambda: patient_state.update({"manual_fall_active": False, "fall_alert": False})).start()
+
                         fall_status, fall_conf = patient_state.get("fall", ("No person", 0.0))
                         emotion, emo_conf      = patient_state.get("emotion", ("neutral", 0.0))
                         if patient_state.get("fall_alert"):
-                            fall_status = "Continuous Fall"
+                            fall_status = "FALL DETECTED"
 
                         level, alerts = evaluate_criticality(hr, spo2, temp, stage, fall_status, emotion, crit)
                         patient_name  = next((c["name"] for c in PATIENT_CONFIGS if c["id"] == pid), f"Patient {pid}")
@@ -474,7 +633,7 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
                             "level":              level,
                             "alerts":             alerts,
                             "emotion":            emotion,
-                            "fall_status":        fall_status,
+                            "fall_status":        "FALL DETECTED" if "fall" in str(fall_status).lower() else fall_status,
                             "emotion_confidence": emo_conf,
                             "fall_confidence":    fall_conf,
                             "timestamp":          datetime.datetime.now().strftime("%H:%M:%S"),
@@ -482,15 +641,132 @@ async def mqtt_listener(sleep_model, sleep_scaler) -> None:
 
                         payload_str = json.dumps(payload)
                         await manager.broadcast(payload_str)
-                        await client.publish(MQTT_TOPIC_PROCESSED, payload=payload_str)
-                        logging.info(f"[BROADCAST & PUBLISH] {pid} HR:{hr} SpO2:{spo2} Temp:{temp} → {level}")
+                        try:
+                            await client.publish(MQTT_TOPIC_PROCESSED, payload=payload_str)
+                            logging.info(f"[BROADCAST & PUBLISH] {pid} HR:{hr} SpO2:{spo2} Temp:{temp} → {level}")
+                        except Exception as pub_e:
+                            logging.warning(f"[MQTT] Publish failed, buffering locally: {pub_e}")
+                            with sqlite3.connect(DB_NAME) as conn:
+                                conn.cursor().execute("INSERT INTO offline_messages (topic, payload) VALUES (?, ?)", (MQTT_TOPIC_PROCESSED, payload_str))
+                                conn.commit()
 
                     except Exception as e:
                         logging.warning(f"[MQTT] Processing error: {e}")
 
         except aiomqtt.MqttError as e:
-            logging.error(f"[MQTT] Broker error: {e}. Retrying in {reconnect_delay}s ...")
-        await asyncio.sleep(reconnect_delay)
+            logging.error(f"[MQTT] Broker connection lost: {e}. Reconnecting in {reconnect_delay}s...")
+            await asyncio.sleep(reconnect_delay)
+        except Exception as e:
+            logging.error(f"[MQTT] Unexpected error in listener: {e}. Restarting...")
+            await asyncio.sleep(reconnect_delay)
+
+# ── Network Monitoring & Persistence Tasks ────────────────────────────────────
+async def sync_offline_data():
+    while True:
+        await asyncio.sleep(10)
+        try:
+            with sqlite3.connect(DB_NAME) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT id, topic, payload FROM offline_messages ORDER BY id ASC LIMIT 50")
+                rows = cursor.fetchall()
+            
+            if rows:
+                async with aiomqtt.Client(hostname=MQTT_BROKER_HOST, port=MQTT_PORT) as client:
+                    for row_id, topic, payload in rows:
+                        await client.publish(topic, payload=payload)
+                        with sqlite3.connect(DB_NAME) as conn:
+                            conn.cursor().execute("DELETE FROM offline_messages WHERE id = ?", (row_id,))
+                            conn.commit()
+                    logging.info(f"[SYNC] Successfully synced {len(rows)} offline messages.")
+        except Exception:
+            pass # Ignore if broker is still down
+
+async def network_health_monitor():
+    global NETWORK_STATUS, ACTIVE_NETWORK
+    while True:
+        await asyncio.sleep(1)
+        # Check network fallback state
+        try:
+            fallback_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fallback_state.json")
+            if os.path.exists(fallback_path):
+                with open(fallback_path, "r") as f:
+                    state = json.load(f)
+                    ACTIVE_NETWORK = state.get("active_network", "Primary WiFi")
+        except Exception:
+            pass
+
+        # Ping main server to check latency
+        try:
+            # We use a simple ping to localhost since MQTT broker is local in this setup, 
+            # or ping 8.8.8.8 to check internet latency.
+            if sys.platform == 'win32':
+                cmd = ["ping", "-n", "1", "8.8.8.8"]
+            else:
+                cmd = ["ping", "-c", "1", "-W", "1", "8.8.8.8"]
+                
+            start = time.time()
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            await proc.communicate()
+            latency = (time.time() - start) * 1000
+
+            if proc.returncode != 0:
+                NETWORK_STATUS = "POOR"
+            elif latency > 500:
+                NETWORK_STATUS = "POOR"
+            elif latency > 200:
+                NETWORK_STATUS = "FAIR"
+            else:
+                NETWORK_STATUS = "EXCELLENT"
+        except Exception as e:
+            NETWORK_STATUS = "POOR"
+
+async def broadcast_telemetry():
+    global NETWORK_STATUS, ACTIVE_NETWORK
+    import aiomqtt
+    will = aiomqtt.Will(topic=MQTT_TOPIC_STATUS, payload=b'{"device": "pi", "status": "offline"}', qos=1, retain=True)
+    
+    last_published_network = ACTIVE_NETWORK
+    last_publish_time = 0
+    
+    while True:
+        try:
+            async with aiomqtt.Client(hostname=MQTT_BROKER_HOST, port=MQTT_PORT, will=will) as client:
+                await client.publish(MQTT_TOPIC_STATUS, payload=b'{"device": "pi", "status": "online"}', qos=1, retain=True)
+                logging.info(f"[LWT] Persistent MQTT connection established with Will on {MQTT_TOPIC_STATUS}")
+                
+                while True:
+                    await asyncio.sleep(1)
+                    current_time = time.time()
+                    network_changed = (ACTIVE_NETWORK != last_published_network)
+                    
+                    if current_time - last_publish_time >= 5 or network_changed:
+                        try:
+                            buffer_size = 0
+                            with sqlite3.connect(DB_NAME) as conn:
+                                cursor = conn.cursor()
+                                cursor.execute("SELECT COUNT(*) FROM offline_messages")
+                                buffer_size = cursor.fetchone()[0]
+
+                            payload = {
+                                "type": "network_telemetry",
+                                "buffer_size": buffer_size,
+                                "active_network": ACTIVE_NETWORK,
+                                "network_status": NETWORK_STATUS
+                            }
+                            payload_str = json.dumps(payload)
+                            await manager.broadcast(payload_str)
+                            await client.publish("r25_014/vitals/telemetry", payload=payload_str)
+                            
+                            last_publish_time = current_time
+                            last_published_network = ACTIVE_NETWORK
+                            
+                        except Exception as e:
+                            logging.error(f"Telemetry error: {e}")
+        except Exception as e:
+            logging.error(f"MQTT Client connection failed, retrying in 5s... {e}")
+            await asyncio.sleep(5)
 
 
 @asynccontextmanager
@@ -508,7 +784,22 @@ async def lifespan(app: FastAPI):
     ).start()
 
     logging.info("Starting MQTT listener ...")
+    loop = asyncio.get_event_loop()
+    
+    # Only listen to local keyboard if we are in a real terminal (TTY)
+    if sys.stdin.isatty():
+        try:
+            loop.add_reader(sys.stdin, handle_local_keypress)
+            logging.info("Local keyboard listener active (Press 'F' for manual trigger).")
+        except Exception as e:
+            logging.warning(f"Could not start local keyboard listener: {e}")
+    else:
+        logging.info("Background mode: Local keyboard listener disabled.")
+    
     asyncio.create_task(mqtt_listener(sleep_model, sleep_scaler))
+    asyncio.create_task(sync_offline_data())
+    asyncio.create_task(network_health_monitor())
+    asyncio.create_task(broadcast_telemetry())
     yield
 
 

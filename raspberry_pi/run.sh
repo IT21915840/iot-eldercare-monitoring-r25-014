@@ -68,28 +68,18 @@ if [ ! -f "$VENV" ]; then
     exit 1
 fi
 
-# ── 4. Pi AI Server (port 8001) ───────────────────────────────────────────────
-log "Starting Server_Pi_AI.py on port 8001 ..."
-"$VENV" "$SCRIPT_DIR/Server_Pi_AI.py" > /tmp/pi_ai.log 2>&1 &
-PID_AI=$!
-sleep 2
-if kill -0 "$PID_AI" 2>/dev/null; then
-    ok "Server_Pi_AI running  (PID $PID_AI) — logs: /tmp/pi_ai.log"
-else
-    fail "Server_Pi_AI failed to start. Check /tmp/pi_ai.log"
-    cat /tmp/pi_ai.log
-    exit 1
-fi
+# ── 4. Move to root for Server_Main paths ─────────────────────────────────────
+cd "$SCRIPT_DIR/.."
 
 # ── 5. Web Dashboard Server (port 8002) ───────────────────────────────────────
-log "Starting Server_Web.py on port 8002 ..."
-"$VENV" "$SCRIPT_DIR/Server_Web.py" > /tmp/pi_web.log 2>&1 &
+log "Starting Server_Main.py on port 8002 ..."
+"$VENV" "Server_Main.py" > /tmp/pi_web.log 2>&1 &
 PID_WEB=$!
 sleep 2
 if kill -0 "$PID_WEB" 2>/dev/null; then
-    ok "Server_Web running    (PID $PID_WEB) — logs: /tmp/pi_web.log"
+    ok "Server_Main running    (PID $PID_WEB) — logs: /tmp/pi_web.log"
 else
-    fail "Server_Web failed to start. Check /tmp/pi_web.log"
+    fail "Server_Main failed to start. Check /tmp/pi_web.log"
     cat /tmp/pi_web.log
     exit 1
 fi

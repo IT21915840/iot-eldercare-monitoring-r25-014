@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Launcher | Patient Monitoring</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/HTML/style.css">
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'primary': 'var(--bg-primary)',
+                        'accent-primary': 'var(--accent-primary)',
+                        'text-primary': 'var(--text-primary)',
+                        'text-secondary': 'var(--text-secondary)',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-primary text-text-primary flex items-center justify-center min-h-screen p-4 overflow-y-auto relative transition-colors duration-300">
+    
+    <!-- Background Glow Entities -->
+    <div class="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-cyan-500/10 blur-[120px] rounded-full"></div>
+    <div class="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-500/10 blur-[120px] rounded-full"></div>
+
+    <div class="w-full max-w-4xl p-8 animate-fade-in relative z-10">
+        
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 shadow-lg shadow-cyan-500/20 mb-6">
+                <i data-lucide="power" class="text-white w-8 h-8"></i>
+            </div>
+            <h1 class="text-4xl font-extrabold tracking-tight text-text-primary font-outfit mb-3">
+                System Launcher Wizard
+            </h1>
+            <p class="text-text-secondary font-medium text-lg max-w-2xl mx-auto">
+                Select the background services you wish to activate before proceeding to the live dashboard monitoring view.
+            </p>
+        </div>
+
+        <!-- Cards Container -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+
+            <!-- Vision AI Engine Card -->
+            <div class="glass-panel p-8 rounded-3xl border border-white/5 relative overflow-hidden group hover:border-cyan-500/30 transition-colors">
+                <div class="absolute top-0 right-0 p-6 opacity-10">
+                    <i data-lucide="camera" class="w-24 h-24"></i>
+                </div>
+                
+                <div class="flex justify-between items-start mb-6">
+                    <h3 class="text-2xl font-bold font-outfit text-text-primary">Vision AI Engine</h3>
+                    <div id="ai-status" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-500/20 text-gray-400">STOPPED</div>
+                </div>
+                
+                <p class="text-text-secondary text-sm mb-8 relative z-10 h-20">
+                    Starts the <code>Server_Pi_AI.py</code> script. Initializes the DenseNet-201 and HOG models, activates the live webcam feed, and begins analyzing frames for fall detection.
+                </p>
+                
+                <div class="flex space-x-4 relative z-10">
+                    <button onclick="toggleService('ai')" id="ai-btn" class="flex-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                        <span>Start Engine</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Network Fallback Daemon Card -->
+            <div class="glass-panel p-8 rounded-3xl border border-white/5 relative overflow-hidden group hover:border-indigo-500/30 transition-colors">
+                <div class="absolute top-0 right-0 p-6 opacity-10">
+                    <i data-lucide="wifi" class="w-24 h-24"></i>
+                </div>
+                
+                <div class="flex justify-between items-start mb-6">
+                    <h3 class="text-2xl font-bold font-outfit text-text-primary">Network Fallback</h3>
+                    <div id="network-status" class="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-500/20 text-gray-400">STOPPED</div>
+                </div>
+                
+                <p class="text-text-secondary text-sm mb-8 relative z-10 h-20">
+                    Starts the <code>network_fallback.py</code> daemon. Continuously pings the router and automatically forces a multi-network failover if connection to the cloud is lost.
+                </p>
+                
+                <div class="flex space-x-4 relative z-10">
+                    <button onclick="toggleService('network')" id="network-btn" class="flex-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                        <span>Start Daemon</span>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Admin IP Management Section -->
+        <div id="admin-ip-section" class="hidden glass-panel p-8 rounded-3xl border border-white/5 mb-12 relative overflow-hidden group hover:border-orange-500/30 transition-colors animate-fade-in">
+            <div class="absolute top-0 right-0 p-6 opacity-10">
+                <i data-lucide="shield" class="w-24 h-24"></i>
+            </div>
+            
+            <h3 class="text-2xl font-bold font-outfit text-text-primary mb-6 flex items-center space-x-2">
+                <i data-lucide="lock" class="w-6 h-6 text-orange-400"></i>
+                <span>IP Access Management (Admin)</span>
+            </h3>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-4 relative z-10">
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-widest text-text-secondary mb-3 ml-1">Whitelist New IP Address</label>
+                    <div class="flex space-x-2">
+                        <input type="text" id="ip-address" class="modern-input w-full px-4 py-3 rounded-xl font-medium text-sm" placeholder="e.g. 192.168.1.100">
+                        <button onclick="addIP()" class="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 font-bold px-6 rounded-xl transition-all text-sm flex items-center space-x-1">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>Add</span>
+                        </button>
+                    </div>
+                    <p class="text-xs text-text-secondary mt-2 ml-1 italic">Note: Standard users are blocked from logging in unless their IP is on this list.</p>
+                </div>
+                
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-widest text-text-secondary mb-3 ml-1">Currently Authorized IPs</label>
+                    <div id="ip-list" class="space-y-2 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
+                        <!-- IP items will render here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dashboard Button -->
+        <div class="text-center">
+            <a href="/" class="inline-flex items-center justify-center space-x-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold py-4 px-10 rounded-2xl shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group">
+                <span>PROCEED TO DASHBOARD</span>
+                <i data-lucide="arrow-right" class="w-5 h-5 group-hover:translate-x-1 transition-transform"></i>
+            </a>
+        </div>
+
+    </div>
+
+    <script>
+        document.documentElement.classList.add('dark');
+        lucide.createIcons();
+
+        async function fetchUser() {
+            try {
+                const res = await fetch('/api/auth/me');
+                const data = await res.json();
+                if (data.role === 'admin') {
+                    document.getElementById('admin-ip-section').classList.remove('hidden');
+                    fetchIPs();
+                }
+            } catch (err) {
+                console.error("Auth check failed");
+            }
+        }
+
+        async function fetchIPs() {
+            try {
+                const res = await fetch('/api/ips');
+                const data = await res.json();
+                const list = document.getElementById('ip-list');
+                list.innerHTML = '';
+                if (data.length === 0) {
+                    list.innerHTML = '<p class="text-text-secondary text-sm italic py-2 ml-1">No IPs whitelisted yet.</p>';
+                } else {
+                    data.forEach(item => {
+                        list.innerHTML += `
+                            <div class="flex justify-between items-center bg-white/5 px-4 py-3 rounded-xl text-sm border border-white/5">
+                                <span class="font-mono text-text-primary flex items-center space-x-2">
+                                    <span class="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+                                    <span>${item.ip}</span>
+                                </span>
+                                <button onclick="deleteIP('${item.ip}')" class="text-red-400 hover:text-red-300 transition-colors p-1">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        `;
+                    });
+                }
+                lucide.createIcons();
+            } catch (err) {
+                console.error("Failed to fetch IPs");
+            }
+        }
+
+        async function addIP() {
+            const input = document.getElementById('ip-address');
+            const ip = input.value.trim();
+            if (!ip) return;
+            try {
+                await fetch('/api/ips', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ip_address: ip})
+                });
+                input.value = '';
+                fetchIPs();
+            } catch (err) {
+                console.error("Failed to add IP");
+            }
+        }
+
+        async function deleteIP(ip) {
+            try {
+                await fetch(`/api/ips/${ip}`, { method: 'DELETE' });
+                fetchIPs();
+            } catch (err) {
+                console.error("Failed to delete IP");
+            }
+        }
+
+        fetchUser();
+        document.documentElement.classList.add('dark');
+        lucide.createIcons();
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/system/status');
+                const data = await res.json();
+                updateUI('ai', data.ai);
+                updateUI('network', data.network);
+            } catch (err) {
+                console.error("Failed to fetch status");
+            }
+        }
+
+        function updateUI(service, state) {
+            const btn = document.getElementById(`${service}-btn`);
+            const statusBadge = document.getElementById(`${service}-status`);
+            
+            if (state === 'running') {
+                btn.innerHTML = `<i data-lucide="square" class="w-4 h-4"></i><span>Stop ${service === 'ai' ? 'Engine' : 'Daemon'}</span>`;
+                btn.className = `flex-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2`;
+                statusBadge.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-green-500/20 text-green-400`;
+                statusBadge.innerText = 'RUNNING';
+            } else {
+                const color = service === 'ai' ? 'cyan' : 'indigo';
+                btn.innerHTML = `<i data-lucide="play" class="w-4 h-4"></i><span>Start ${service === 'ai' ? 'Engine' : 'Daemon'}</span>`;
+                btn.className = `flex-1 bg-${color}-500/10 hover:bg-${color}-500/20 text-${color}-400 border border-${color}-500/30 font-bold py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2`;
+                statusBadge.className = `px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-500/20 text-gray-400`;
+                statusBadge.innerText = 'STOPPED';
+            }
+            lucide.createIcons();
+        }
+
+        async function toggleService(service) {
+            const statusBadge = document.getElementById(`${service}-status`);
+            const isRunning = statusBadge.innerText === 'RUNNING';
+            const endpoint = isRunning ? `/api/system/stop/${service}` : `/api/system/start/${service}`;
+            
+            // Loading state
+            const btn = document.getElementById(`${service}-btn`);
+            btn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i><span>Processing...</span>`;
+            lucide.createIcons();
+
+            try {
+                await fetch(endpoint, { method: 'POST' });
+                // Small delay to let OS process start/stop
+                setTimeout(fetchStatus, 1000);
+            } catch (err) {
+                console.error("Failed to toggle service");
+                fetchStatus();
+            }
+        }
+
+        // Poll status every 3 seconds
+        fetchStatus();
+        setInterval(fetchStatus, 3000);
+    </script>
+</body>
+</html>
